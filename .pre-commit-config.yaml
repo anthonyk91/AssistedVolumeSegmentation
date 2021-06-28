@@ -1,0 +1,20 @@
+repos:
+-   repo: https://github.com/psf/black
+    rev: 20.8b1
+    hooks:
+    -   id: black
+        exclude: ^3rdparty/
+        args: [--config=pyproject.toml]
+-   repo: https://github.com/hadialqattan/pycln
+    rev: v0.0.1-beta.3
+    hooks:
+    -   id: pycln
+        exclude: ^3rdparty/
+        args: [--config=pyproject.toml]
+-   repo: https://github.com/pycqa/isort
+    rev: 5.5.4
+    hooks:
+    -   id: isort
+        exclude: ^3rdparty/
+        files: "\\.(py)$"
+        args: [--settings-path=pyproject.toml]

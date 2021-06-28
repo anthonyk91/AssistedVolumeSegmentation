@@ -1,0 +1,112 @@
+# base folder of project.  other path/file names are relative to this path
+project_folder: /home/anthony/workspace/annotation/highres_project
+
+# this is a list of paths under the project directory which will hold processing data
+# for various data sources.  an example is if there are multiple samples (ie multiple
+# specimens that have been recorded), and they each are part of a common distribution,
+# the various samples can be recorded here as different subdirectories.  A common distribution
+# means that a common segmentation model can be applied to each of the samples.  The
+# values under "subdir_paths" are simply labels used for holding processing, and each
+# entry corresponds with a source path under source_data_paths, in order.
+subdir_paths:
+ - sample_121431
+
+# this is a list of source data paths corresponding with various samples in the project.
+# each source data path should contain input data, such as a stack of tiff files.
+source_data_paths: 
+ - /run/media/anthony/a77cfb18-3e3d-4ccd-9f0a-a84acfdf5459/diamond/121431
+
+# data_stats is used for holding values used for normalising data.  this is a list
+# of values representing mean, std, min, max. this can be calculated with find_stats.py
+# this is used to normalise the data values before feeding into the neural network training,
+# for example by applying training_data = (source_data - mean) / std.  the parameter
+# normalise_method is used to specify the normalising function (currently just "mean_std").
+data_stats: [30557.405897, 3475.292571, 5037, 47042]
+normalise_method: mean_std
+
+# size of annotation tiles in source pixels.  this is the size of each tile that will be used
+# for performing annotation (and each tile that is used for training and inference).  when a
+# tile is annotated the full tile must be annotated, eg cell in the tile must be marked as
+# each unmarked region is considered background.  in cases where a lot of manual annotation is
+# needed then a smaller annotation size may be necessary for practical reasons.  section_dimensions
+# and section_input_dimensions need to be <= annotation_size.
+annotation_size: [160, 160, 160]
+
+# dimensions of sections extracted from annotated data, for training.  section_input_dimensions
+# represents the size of the data section that is used as input for the neural network model.
+# section_dimensions should be >= than section_input_dimensions and <= annotation_size for
+# each dimension, and represents the size of a piece of data that is used for performing
+# data augmentation before cropping the section passed into the network.  as an example this
+# section may be warped, scaled, stretched or distorted in various ways before the input
+# section is cropped from it.  if section_input_dimensions or annotation_size need to be
+# reduced, then section_dimensions should be proportionally larger than section_input_dimensions
+section_input_dimensions: [64, 64, 64]
+section_dimensions: [80, 80, 80]
+
+# path to installed 3D Slicer executable
+slicer_path: /usr/local/bin/Slicer
+
+# define the segmentation method.  there are two options available here,
+# - "semantic" specifies that semantic segmentation annotations will be used, where one segment will be used to define
+# all of the regions of a class (such as all of the regions inside cells), and different segments
+# can represent different classes (such as cell bodies or other features).  in this case, in
+# the annotation tool (Slicer) all cell bodies will have the same colour.
+# - "instance" specifies that instance segmentation will be used, where all segments are part of the same
+# class (such as cells), and various segments represent various instances (eg individual cells).  in the
+# annotation tool individual cells will have different colours.
+segmentation_method: "semantic"
+
+# the following values generally represent paths where output will be stored, and may not
+# need to be modified.
+
+# file containing generated reduced view of source data
+overview_reduced_data: overviews/sample_stack.nii.gz
+
+# file containing manually annotated overview of source data (in overview_reduced_data)
+#overview_coverage: overviews/sample_stack_labelmap.nrrd
+overview_coverage: overviews/sample_stack.seg.nrrd
+
+# file containing generated map of annotation pieces
+pieces_overview: overviews/annotation_pieces.nrrd
+
+# path containing completed annotated pieces
+completed_piece_path: annotated
+
+# path containing completed annotated pieces
+inprogress_piece_path: inprogress
+
+# path containing excluded pieces
+excluded_piece_path: excluded
+
+# path containing removed files, for example 
+removed_piece_path: removed_files
+
+# path containing completed annotated pieces
+overviews_path: overviews
+
+# file containing generated data properties
+project_data_file: assocs.json
+
+# path to source data
+source_piece_path: sources
+
+# training options
+# generator_output_path is where generated pieces from the segmentation model will be
+# found.  at the moment this should correspond with the experiment output directory
+generator_output_path: exp_output
+
+# distribution of pieces to use for training and validation
+train_validation_splits: [0.9, 0.1]
+
+# random number seed used for generating training and validation splits, in order to allow
+# reproducibility
+split_random_seed: 41235
+
+# when generating segmentations after training, specify number of tiles to generate.
+# these can then be corrected before performing another training cycle
+generate_number_tiles: 4
+
+# set threshold for setting generated segmentations as filled or not.  the values produced
+# by the model will be real-valued (floats), and this threshold is used to change them
+# to true/false values in the segmentation.
+generated_threshold: 0.2
