@@ -1,5 +1,5 @@
 batchgenerators==0.19.3
-cffi
+cffi~=1.14
 cycler==0.10.0
 decorator==4.4.1
 future==0.18.2
@@ -8,28 +8,28 @@ kiwisolver==1.1.0
 linecache2==1.0.0
 matplotlib==3.1.2
 networkx==2.4
-numpy
-pandas
-Pillow==7.1.0
+numpy~=1.21
+pandas~=1.2.5
+Pillow~=8.2
 pycparser==2.19
 pyparsing==2.4.5
 python-dateutil==2.8.1
 pytz==2019.3
 PyWavelets==1.1.1
-scikit-image
-scikit-learn
-scipy
+scikit-image~=0.18
+scikit-learn~=0.24
+scipy~=1.7
 six==1.13.0
 sklearn==0.0
-threadpoolctl==1.1.0
+threadpoolctl~=2.1
 traceback2==1.4.0
 unittest2==1.1.0
 
-Cython
-torch
+Cython~=0.29
+torch~=1.9
 
 # for annotation
-nibabel
-pynrrd
-pyyaml
-filelock
+nibabel~=3.2
+pynrrd~=0.4
+PyYAML~=5.4
+filelock~=3.0
