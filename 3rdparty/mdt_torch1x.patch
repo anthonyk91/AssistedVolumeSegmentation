@@ -1,0 +1,300 @@
+diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
+--- medicaldetectiontoolkit/default_configs.py	2021-06-30 21:47:53.037038357 +0100
++++ revised/default_configs.py	2021-06-30 21:17:20.369628749 +0100
+@@ -140,4 +140,7 @@
+         # for probabilistic detection
+         self.n_latent_dims = 0
+ 
++        # choose between segmentation methods for returning segmentation output.  None for no output, "global" for a
++        # single global segmentation and "instance" for instance segmentation
++        self.segmentation_method = None
+ 
+diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
+--- medicaldetectiontoolkit/exec.py	2021-06-30 21:47:53.038038369 +0100
++++ revised/exec.py	2021-06-30 21:24:18.110466504 +0100
+@@ -114,12 +114,19 @@
+             if cf.do_validation:
+                 val_results_list = []
+                 val_predictor = Predictor(cf, net, logger, mode='val')
+-                for _ in range(batch_gen['n_val']):
++                if cf.val_mode == 'val_patient':
++                    val_predictor = Predictor(cf, net, logger, mode='val')
++                    num_val = batch_gen['n_val']
++                elif cf.val_mode == 'val_sampling':
++                    num_val = cf.num_val_batches
++                for vix in range(num_val):
+                     batch = next(batch_gen[cf.val_mode])
+                     if cf.val_mode == 'val_patient':
+                         results_dict = val_predictor.predict_patient(batch)
+                     elif cf.val_mode == 'val_sampling':
+                         results_dict = net.train_forward(batch, is_validation=True)
++                    logger.info('val. batch {0}/{1} (ep. {2}) ||'
++                                .format(vix + 1, num_val, epoch) + results_dict['logger_string'])
+                     #val_results_list.append([results_dict['boxes'], batch['pid']])
+                     val_results_list.append(({k:v for k,v in results_dict.items() if k != "seg_preds"}, batch["pid"]))
+ 
+diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
+--- medicaldetectiontoolkit/models/mrcnn.py	2021-06-30 21:47:53.039038381 +0100
++++ revised/models/mrcnn.py	2021-06-30 21:37:30.249718694 +0100
+@@ -874,8 +874,12 @@
+                     if cf.dim == 2 else mutils.unmold_mask_3D(masks[i], boxes[i], permuted_image_shape))
+             # if masks are returned, take max over binary full masks of all predictions in this image.
+             # right now only binary masks for plotting/monitoring. for instance segmentation return all proposal masks.
+-            final_masks = np.max(np.array(full_masks), 0) if len(full_masks) > 0 else np.zeros(
+-                (*permuted_image_shape[:-1],))
++            #final_masks = np.max(np.array(full_masks), 0) if len(full_masks) > 0 else np.zeros(
++            #    (*permuted_image_shape[:-1],))
++            if len(full_masks) > 0:
++                final_masks = np.array(full_masks)
++            else:
++                final_masks = np.zeros((*permuted_image_shape[:-1],))
+ 
+             # add final predictions to results.
+             if 0 not in boxes.shape:
+@@ -890,7 +894,8 @@
+ 
+     # create and fill results dictionary.
+     results_dict = {'boxes': box_results_list,
+-                    'seg_preds': np.round(np.array(seg_preds))[:, np.newaxis].astype('uint8')}
++                    # 'seg_preds': np.round(np.array(seg_preds))[:, np.newaxis].astype('uint8')}
++                    'seg_preds': seg_preds}  # np.round(np.array(seg_preds)).astype('uint8')}
+ 
+     return results_dict
+ 
+diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
+--- medicaldetectiontoolkit/predictor.py	2021-06-30 21:47:53.039038381 +0100
++++ revised/predictor.py	2021-06-30 21:37:30.218718329 +0100
+@@ -155,6 +155,7 @@
+             plot_batches = np.random.choice(np.arange(batch_gen['n_test']), size=n_test_plots, replace=False)
+ 
+             with torch.no_grad():
++                print("batch_gen n_test %d" % batch_gen["n_test"])
+                 for i in range(batch_gen['n_test']):
+ 
+                     batch = next(batch_gen['test'])
+@@ -165,10 +166,16 @@
+                         dict_of_patient_results[batch['pid']]['results_dicts'] = []
+                         dict_of_patient_results[batch['pid']]['patient_bb_target'] = batch['patient_bb_target']
+                         dict_of_patient_results[batch['pid']]['patient_roi_labels'] = batch['patient_roi_labels']
++                        dict_of_patient_results[batch['pid']]['seg_results_list'] = []
++                        dict_of_patient_results[batch['pid']]['inst_results_list'] = []
+ 
+                     # call prediction pipeline and store results in dict.
+                     results_dict = self.predict_patient(batch)
+                     dict_of_patient_results[batch['pid']]['results_dicts'].append({"boxes": results_dict['boxes']})
++                    dict_of_patient_results[batch['pid']]['seg_results_list'].append(results_dict['seg_preds'])
++                    dict_of_patient_results[batch['pid']]['inst_results_list'].append(results_dict['inst_preds'])
++                    print("recording pid %d seg shape %s" % (batch["pid"], results_dict['seg_preds'].shape))
++                    print("num boxes %d inst segs %d" % (len(results_dict["boxes"][0]), len(results_dict["inst_preds"])))
+ 
+                     if i in plot_batches and not self.patched_patient:
+                         # view qualitative results of random test case
+@@ -195,6 +202,8 @@
+ 
+         self.logger.info('finished predicting test set. starting post-processing of predictions.')
+         results_per_patient = []
++        results_per_patient_seg = {}
++        results_per_patient_inst = {}
+ 
+         # loop over patients again to flatten results across epoch predictions.
+         # if provided, add ground truth boxes for evaluation.
+@@ -208,9 +217,13 @@
+                                      for batch_instance in range(b_size)]
+ 
+             # TODO return for instance segmentation:
++            tmp_ens_list_seg = p_dict['seg_results_list']
+             # results_dict['seg_preds'] = np.mean(results_dict['seg_preds'], 1)[:, None]
+             # results_dict['seg_preds'] = np.array([[item for d in tmp_ens_list for item in d['seg_preds'][batch_instance]]
+             #                                       for batch_instance in range(len(tmp_ens_list[0]['boxes']))])
++            results_dict['seg_preds'] = np.array([[item for d in tmp_ens_list_seg for item in d[batch_instance]]
++                                                 for batch_instance in range(len(tmp_ens_list_seg[0]))])
++            results_dict["inst_preds"] = p_dict['inst_results_list']
+ 
+             # add 3D ground truth boxes for evaluation.
+             for b in range(p_dict['patient_bb_target'].shape[0]):
+@@ -219,6 +232,14 @@
+                                                      'box_label': p_dict['patient_roi_labels'][b][t],
+                                                      'box_type': 'gt'})
+             results_per_patient.append([results_dict, pid])
++            if self.cf.segmentation_method == "global":
++                if pid not in results_per_patient_seg:
++                    results_per_patient_seg[pid] = []
++                results_per_patient_seg[pid].append(results_dict['seg_preds'])
++            elif self.cf.segmentation_method == "instance":
++                if pid not in results_per_patient_inst:
++                    results_per_patient_inst[pid] = []
++                results_per_patient_inst[pid].append(results_dict['inst_preds'])
+ 
+         # save out raw predictions.
+         out_string = 'raw_pred_boxes_hold_out_list' if self.cf.hold_out_test_set else 'raw_pred_boxes_list'
+@@ -250,8 +271,64 @@
+                 assert results_per_patient[ix][1] == final_patient_box_results[ix][1], "should be same pid"
+                 results_per_patient[ix][0]["boxes"] = final_patient_box_results[ix][0]
+ 
++            # combine instance segmentations based on associations in reduced boxes
++            for p_list in results_per_patient:
++                pid = p_list[1]
++                patient_boxes = [b for x in p_list[0] for b in x]
++
++                if self.cf.segmentation_method == "global":
++                    # combine segmentations from various ensemble models and instances
++                    # augmentation into a single segmentation array
++                    seg_arrays = [y for x in results_per_patient_seg[pid] for y in x]
++                    merged_segs = np.mean([np.mean(x, axis=0) for x in seg_arrays], axis=0)
++                    # merged_segs just has the spatial dimensions (x,y,z), stored format is expected
++                    # to include additional dimensions for example for instances, so add dimensions
++                    merged_segs = merged_segs[None, None, :, :, :]
++                    print("pid %d mean %f max %f min %f dtype %s" % (pid, merged_segs.mean(), merged_segs.max(), merged_segs.min(), merged_segs.dtype))
++                elif self.cf.segmentation_method == "instance":
++                    # flatten to get instance segmentation arrays
++                    inst_seg_arrays = [z for x in results_per_patient_inst[pid] for y in x for z in y]
++                    seg_array_sizes = [x.shape[0] for x in inst_seg_arrays]
++                    indices = np.cumsum([0] + seg_array_sizes)
++
++                    merged_segs = np.array([
++                        self.merge_segmentation(inst_seg_arrays, indices, this_box["box_assocs"])
++                        for this_box in patient_boxes
++                    ])
++                    print("pid %d insts %d merged insts %s mean %f max %f min %f dtype %s" % (pid, indices[-1], merged_segs.shape, merged_segs.mean(), merged_segs.max(), merged_segs.min(), merged_segs.dtype))
++
++                # write out merged instance segmentations to file
++                if self.cf.segmentation_method is not None:
++
++                    out_file = os.path.join(self.cf.fold_dir, "instseg_pid_%d.pickle" % pid)
++                    with open(out_file, "wb") as fh:
++                        pickle.dump(merged_segs, fh)
++
+             return results_per_patient
+ 
++    def merge_segmentation(self, inst_seg_arrays, array_indices, box_assocs):
++        """
++        Merge multiple instance segmentations into combined segmentations, based on associations between
++        boxes after performing weighted box clustering.
++        :param inst_seg_arrays: List containing a number of instance segmentation arrays
++        :param array_indices: Array of cumulative size of each array
++        :param box_assocs: List of associated input boxes and weights corresponding with a given output box
++        """
++        def get_input_seg(idx):
++            array_idx = np.where((idx >= array_indices[:-1]) & (idx < array_indices[1:]))[0][0]
++            array_inst_idx = idx - array_indices[array_idx]
++            return inst_seg_arrays[array_idx][array_inst_idx]
++
++        # get segments from indexes
++        weighted_segs = []
++        weight_sum = 0.
++        for input_idx, weight in box_assocs:
++            input_seg = get_input_seg(input_idx) # shape (x,y,z)
++            weighted_segs.append(input_seg * weight)
++            weight_sum += weight
++
++        merged_seg = np.sum(weighted_segs, axis=0) / weight_sum
++        return merged_seg
+ 
+     def load_saved_predictions(self, apply_wbc=False):
+         """
+@@ -414,6 +491,12 @@
+                                  for batch_instance in range(org_img_shape[0])]
+         results_dict['seg_preds'] = np.array([[item for d in results_list for item in d['seg_preds'][batch_instance]]
+                                               for batch_instance in range(org_img_shape[0])])
++
++        # todo: remove check and allow varying batch_instance size (?)
++        assert org_img_shape[0] == 1
++        # results_dict['inst_preds'] = np.concatenate([d["inst_preds"] for d in results_list], axis=0)
++        results_dict['inst_preds'] = [d["inst_preds"] for d in results_list]
++
+         if self.mode == 'val':
+             try:
+                 results_dict['torch_loss'] = results_list[0]['torch_loss']
+@@ -450,11 +533,23 @@
+             # counts patch instances per pixel-position.
+             patch_overlap_map = np.zeros_like(out_seg_preds, dtype='uint8')
+ 
++            # produce map of instance segmentations, in space of original image
++            # find total number of instances (corresponding with boxes)
++            num_insts = np.sum([x.shape[0] for x in patches_dict["seg_preds"]])
++            instance_segs = np.zeros((num_insts,) + batch["original_img_shape"][2:], dtype=np.float16)
++
+             #unmold segmentation outputs. loop over patches.
++            inst_count = 0
+             for pix, pc in enumerate(patch_crops):
++                this_instance_segs = patches_dict['seg_preds'][pix]
++                merged_segment = np.mean(this_instance_segs, axis=0, keepdims=True) # (1,x,y,z)
+                 if self.cf.dim == 3:
+-                    out_seg_preds[:, :, pc[0]:pc[1], pc[2]:pc[3], pc[4]:pc[5]] += patches_dict['seg_preds'][pix][None]
++                    #out_seg_preds[:, :, pc[0]:pc[1], pc[2]:pc[3], pc[4]:pc[5]] += patches_dict['seg_preds'][pix][None]
++                    out_seg_preds[:, :, pc[0]:pc[1], pc[2]:pc[3], pc[4]:pc[5]] += merged_segment
+                     patch_overlap_map[:, :, pc[0]:pc[1], pc[2]:pc[3], pc[4]:pc[5]] += 1
++
++                    instance_segs[inst_count:inst_count+this_instance_segs.shape[0], pc[0]:pc[1], pc[2]:pc[3], pc[4]:pc[5]] += this_instance_segs
++                    inst_count += this_instance_segs.shape[0]
+                 else:
+                     out_seg_preds[pc[4]:pc[5], :, pc[0]:pc[1], pc[2]:pc[3], ] += patches_dict['seg_preds'][pix]
+                     patch_overlap_map[pc[4]:pc[5], :, pc[0]:pc[1], pc[2]:pc[3], ] += 1
+@@ -462,6 +557,7 @@
+             # take mean in overlapping areas.
+             out_seg_preds[patch_overlap_map > 0] /= patch_overlap_map[patch_overlap_map > 0]
+             results_dict['seg_preds'] = out_seg_preds
++            results_dict["inst_preds"] = instance_segs
+ 
+             # unmold box outputs. loop over patches.
+             for pix, pc in enumerate(patch_crops):
+@@ -556,7 +652,8 @@
+             results_dict = {}
+             # flatten out batch elements from chunks ([chunk, chunk] -> [b, b, b, b, ...])
+             results_dict['boxes'] = [item for d in chunk_dicts for item in d['boxes']]
+-            results_dict['seg_preds'] = np.array([item for d in chunk_dicts for item in d['seg_preds']])
++            #results_dict['seg_preds'] = np.array([item for d in chunk_dicts for item in d['seg_preds']])
++            results_dict['seg_preds'] = [item for d in chunk_dicts for item in d['seg_preds']]
+ 
+             if self.mode == 'val':
+                 try:
+@@ -598,13 +695,16 @@
+             box_patch_id = np.array([b[1]['patch_id'] for b in boxes])
+ 
+             if 0 not in box_scores.shape:
+-                keep_scores, keep_coords = weighted_box_clustering(
++                keep_scores, keep_coords, keep_assocs = weighted_box_clustering(
+                     np.concatenate((box_coords, box_scores[:, None], box_center_factor[:, None],
+                                     box_n_overlaps[:, None]), axis=1), box_patch_id, wcs_iou, n_ens)
+ 
+                 for boxix in range(len(keep_scores)):
++                    #out_patient_results_list[bix].append({'box_type': 'det', 'box_coords': keep_coords[boxix],
++                    #                         'box_score': keep_scores[boxix], 'box_pred_class_id': cl})
+                     out_patient_results_list[bix].append({'box_type': 'det', 'box_coords': keep_coords[boxix],
+-                                             'box_score': keep_scores[boxix], 'box_pred_class_id': cl})
++                                             'box_score': keep_scores[boxix], 'box_pred_class_id': cl,
++                                                          'box_assocs': keep_assocs[boxix]})
+ 
+         # add gt boxes back to new output list.
+         out_patient_results_list[bix].extend([box for box in b if box['box_type'] == 'gt'])
+@@ -673,6 +773,7 @@
+     :param n_ens: number of models, that are ensembled. (-> number of expected predicitions per position)
+     :return: keep_scores: (n_keep)  new scores of boxes to be kept.
+     :return: keep_coords: (n_keep, (y1, x1, y2, x2, (z1), (z2)) new coordinates of boxes to be kept.
++    :return: keep_assocs: (n_keep, [input_idx, score]) list of associated input boxes and scores for each returned box
+     """
+     dim = 2 if dets.shape[1] == 7 else 3
+     y1 = dets[:, 0]
+@@ -696,6 +797,7 @@
+     keep = []
+     keep_scores = []
+     keep_coords = []
++    keep_assocs = []
+ 
+     while order.size > 0:
+         i = order[0]  # higehst scoring element
+@@ -763,12 +865,13 @@
+         if avg_score > 0.01:
+             keep_scores.append(avg_score)
+             keep_coords.append(avg_coords)
++            keep_assocs.append(list(zip(matches, match_scores)))
+ 
+         # get index of all elements that were not matched and discard all others.
+         inds = np.where(ovr <= thresh)[0]
+         order = order[inds]
+ 
+-    return keep_scores, keep_coords
++    return keep_scores, keep_coords, keep_assocs
+ 
+ 
+ 
