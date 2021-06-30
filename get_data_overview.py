@@ -62,7 +62,7 @@ def reduce_tiff_stack(config, bound_size, subdir_num, launch_editor):
     reduce_ratio = np.min(ratios)
 
     # find target image size
-    target_size = tuple([int(round(x * reduce_ratio)) for x in input_size])
+    target_size = tuple([math.ceil(x * reduce_ratio) for x in input_size])
 
     def find_frame_score(input_idx, div_steps, out_slice):
         lower_bound = max(input_idx, div_steps[out_slice])

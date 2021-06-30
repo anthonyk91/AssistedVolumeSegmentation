@@ -33,3 +33,4 @@ nibabel~=3.2
 pynrrd~=0.4
 PyYAML~=5.4
 filelock~=3.0
+tqdm~=4.61

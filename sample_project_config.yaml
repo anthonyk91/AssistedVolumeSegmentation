@@ -17,10 +17,11 @@ source_data_paths:
  - /run/media/anthony/a77cfb18-3e3d-4ccd-9f0a-a84acfdf5459/diamond/121431
 
 # data_stats is used for holding values used for normalising data.  this is a list
-# of values representing mean, std, min, max. this can be calculated with find_stats.py
-# this is used to normalise the data values before feeding into the neural network training,
-# for example by applying training_data = (source_data - mean) / std.  the parameter
-# normalise_method is used to specify the normalising function (currently just "mean_std").
+# of values representing mean, std, min, max. this can be calculated with find_stats.py.
+# (find_stats can only be run after the overview has been created however, to define the region
+# of interest). these values are used to normalise the data values before feeding into the neural
+# network training, for example by applying training_data = (source_data - mean) / std.  the
+# parameter normalise_method is used to specify the normalising function (currently just "mean_std").
 data_stats: [30557.405897, 3475.292571, 5037, 47042]
 normalise_method: mean_std
 
