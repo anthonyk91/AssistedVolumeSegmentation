@@ -1,5 +1,6 @@
 import os
 
+import default_configs
 import numpy as np
 from default_configs import DefaultConfigs
 
@@ -35,8 +36,9 @@ class configs(DefaultConfigs):
         DefaultConfigs.__init__(self, self.model, server_env, self.dim)
 
         # todo: turn into a relative path
-        self.model_path = "/home/anthony/workspace/segmenting/medicaldetectiontoolkit/models/{}.py".format(
-            self.model
+        mdt_path = os.path.dirname(default_configs.__file__)
+        self.model_path = os.path.join(
+            mdt_path, "models", "{}.py".format(self.model)
         )
 
         # int [0 < dataset_size]. select n patients from dataset for prototyping. If None, all data is used.
@@ -45,6 +47,9 @@ class configs(DefaultConfigs):
         #########################
         #      Data Loader      #
         #########################
+
+        # limit number of workers partly as a result of memory usage
+        self.n_workers = min(4, os.cpu_count() - 1)
 
         # select modalities from preprocessed data
         self.channels = [0]
@@ -98,6 +103,16 @@ class configs(DefaultConfigs):
         self.num_epochs = 25
         self.num_train_batches = 200 if self.dim == 2 else 200
         self.batch_size = 20 if self.dim == 2 else 16
+
+        self.dynamic_lr_scheduling = True
+        self.lr_decay_factor = 0.25
+        self.scheduling_patience = np.ceil(
+            16000 / (self.num_train_batches * self.batch_size)
+        )
+        self.scheduling_criterion = "cellbody_ap"
+        self.scheduling_mode = (
+            "min" if "loss" in self.scheduling_criterion else "max"
+        )
 
         self.do_validation = True
         # decide whether to validate on entire patient volumes (like testing) or sampled patches (like training)

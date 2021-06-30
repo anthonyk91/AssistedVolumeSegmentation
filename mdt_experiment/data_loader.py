@@ -300,7 +300,6 @@ class BatchGenerator(SlimDataLoaderBase):
                 % (self.batch_size, len(self._data))
             )
 
-        # todo: change defn of batch instances to include subdir_num
         # get data for each instance
         batch_data, batch_segs, batch_num_segments = [], [], []
         for this_section in batch_instances:

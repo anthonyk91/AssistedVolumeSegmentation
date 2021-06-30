@@ -55,6 +55,10 @@ slicer_path: /usr/local/bin/Slicer
 # - "instance" specifies that instance segmentation will be used, where all segments are part of the same
 # class (such as cells), and various segments represent various instances (eg individual cells).  in the
 # annotation tool individual cells will have different colours.
+# - "semantic_from_instance" specifies that the model will be trained using semantic segmentation, however the source
+# data is annotated as instances.  for example the annotation files contain multiple segments, representing different
+# instances of cells.  this will treat all segments as members of the same class (cells) and use the data to perform
+# semantic segmentation, which will output regions corresponding with cells (but not capture different instances).
 segmentation_method: "semantic"
 
 # the following values generally represent paths where output will be stored, and may not

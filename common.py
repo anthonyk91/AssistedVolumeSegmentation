@@ -785,8 +785,13 @@ def get_all_subdirs(config):
     existing_dirs = [x for x in dir_list if os.path.exists(x)]
     if len(existing_dirs) != len(dir_list_relative):
         raise RuntimeError(
-            "%d subdirs given in config file, but only %d are present: %s"
-            % (len(dir_list_relative), len(existing_dirs), dir_list_relative)
+            "%d subdirs given in config file, but only %d are present. Listed: %s, found: %s"
+            % (
+                len(dir_list_relative),
+                len(existing_dirs),
+                dir_list_relative,
+                existing_dirs,
+            )
         )
 
     return list(range(len(existing_dirs)))
@@ -815,7 +820,7 @@ def make_seg_format(input_data):
     def make_segments_from_layer(layer_data):
         num_segments = layer_data.max()
         seg_maps = [
-            (input_data == x).astype(input_data.dtype)
+            (layer_data == x).astype(input_data.dtype)
             for x in range(1, num_segments + 1)
         ]
         seg_data = np.stack(seg_maps)
@@ -824,12 +829,6 @@ def make_seg_format(input_data):
     if input_data.ndim == 3:
         # remap from labelmap format, with one layer
         seg_data = make_segments_from_layer(input_data)
-        print(
-            "remapping input data from",
-            input_data.shape,
-            "to shape",
-            seg_data.shape,
-        )
         return seg_data
     elif input_data.ndim == 4 and np.max(input_data) > 1:
         # currently in layer format, expand into segment format
@@ -839,12 +838,6 @@ def make_seg_format(input_data):
         for layer in range(input_data.shape[0]):
             this_layer_data = input_data[layer]
             seg_data += make_segments_from_layer(this_layer_data)
-        print(
-            "remapping input data from",
-            input_data.shape,
-            "to shape",
-            seg_data.shape,
-        )
         return seg_data
     return input_data
 
