@@ -1,5 +1,5 @@
 diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
---- medicaldetectiontoolkit/default_configs.py	2021-06-30 21:47:53.037038357 +0100
+--- medicaldetectiontoolkit/default_configs.py	2021-06-30 22:16:51.830606096 +0100
 +++ revised/default_configs.py	2021-06-30 21:17:20.369628749 +0100
 @@ -140,4 +140,7 @@
          # for probabilistic detection
@@ -10,7 +10,7 @@ diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
 +        self.segmentation_method = None
  
 diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
---- medicaldetectiontoolkit/exec.py	2021-06-30 21:47:53.038038369 +0100
+--- medicaldetectiontoolkit/exec.py	2021-06-30 22:16:51.831606108 +0100
 +++ revised/exec.py	2021-06-30 21:24:18.110466504 +0100
 @@ -114,12 +114,19 @@
              if cf.do_validation:
@@ -34,7 +34,7 @@ diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
                      val_results_list.append(({k:v for k,v in results_dict.items() if k != "seg_preds"}, batch["pid"]))
  
 diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
---- medicaldetectiontoolkit/models/mrcnn.py	2021-06-30 21:47:53.039038381 +0100
+--- medicaldetectiontoolkit/models/mrcnn.py	2021-06-30 22:16:51.832606120 +0100
 +++ revised/models/mrcnn.py	2021-06-30 21:37:30.249718694 +0100
 @@ -874,8 +874,12 @@
                      if cf.dim == 2 else mutils.unmold_mask_3D(masks[i], boxes[i], permuted_image_shape))
@@ -62,7 +62,7 @@ diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
      return results_dict
  
 diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
---- medicaldetectiontoolkit/predictor.py	2021-06-30 21:47:53.039038381 +0100
+--- medicaldetectiontoolkit/predictor.py	2021-06-30 22:16:51.832606120 +0100
 +++ revised/predictor.py	2021-06-30 21:37:30.218718329 +0100
 @@ -155,6 +155,7 @@
              plot_batches = np.random.choice(np.arange(batch_gen['n_test']), size=n_test_plots, replace=False)
@@ -297,4 +297,28 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
 +    return keep_scores, keep_coords, keep_assocs
  
  
+ 
+diff -ruN medicaldetectiontoolkit/requirements.txt revised/requirements.txt
+--- medicaldetectiontoolkit/requirements.txt	2021-06-30 22:16:51.832606120 +0100
++++ revised/requirements.txt	2021-06-30 22:16:05.224052817 +0100
+@@ -1,12 +1,12 @@
+-batchgenerators==0.20.1
++batchgenerators~=0.20 # 0.20.1
+ nms-extension==0.0.0
+-pandas==0.25.3
+-Pillow<7.1
++pandas~=1.2.5 #==0.25.3
++Pillow~=8.2 # <7.1
+ RoIAlign-extension-2D==0.0.0
+ RoIAlign-extension-3D==0.0.0
+-SimpleITK==1.2.4
+-tensorboard==2.2.0
+-torch==1.4.0
+-torchvision==0.5.0
+-tqdm
++SimpleITK~=2.0 #~=1.2 #==1.2.4
++tensorboard~=2.2 #==2.2.0
++torch~=1.9 #~=1.4.0
++torchvision~=0.10 #~=0.5
++tqdm~=4.61
  
