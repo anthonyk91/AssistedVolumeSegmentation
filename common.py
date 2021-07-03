@@ -214,16 +214,18 @@ def init_logging():
 
 
 def get_annotation(
-    piece_index: np.ndarray, data_path: str
+    piece_index: np.ndarray, data_path: str, segment_format=False
 ) -> Tuple[np.ndarray, Dict[str, Any], np.ndarray]:
     """
     Get annotation data for the given piece index
 
     :param np.ndarray piece_index: Array with values=3, of index of piece to read
     :param str data_path: Full path of directory containing given piece
-    :return:  Tuple of annotation piece data in segment format with shape (nsegs, x, y, z),
-         dictionary of header information read from annotation file, and offset of data array
-         within the space of the tile
+    :param bool segment_format: Read resulting annotation as segment format, with shape shape (nsegs, x, y, z),
+           with one layer per segment, if true.  Otherwise return as layer format (nlayers, x, y, z)
+    :return:  Tuple of annotation piece data in either segment format with shape (nsegs, x, y, z)
+         or layer format with shape (nlayers, x, y, z), dictionary of header information read from annotation file, and
+         offset of data array within the space of the tile
     """
 
     indices_str = [str(x) for x in piece_index.tolist()]
@@ -233,7 +235,13 @@ def get_annotation(
     input_data, header = nrrd.read(neighbour_file)
 
     data_suboffset = header["space origin"]
-    seg_data = make_seg_format(input_data)
+    if segment_format:
+        seg_data = make_seg_format(input_data)
+    else:
+        seg_data, layer_header = make_layer_format(input_data)
+
+        # update header to set layers produced in make_layer_format
+        header.update(layer_header)
 
     return seg_data, header, data_suboffset
 
@@ -613,6 +621,10 @@ def get_source_data_stack(
 
     # read data for given piece from source data
     stack_list = get_file_list(source_data_path)
+    if len(stack_list) == 0:
+        raise RuntimeError(
+            "Could not find any source files at path %s" % source_data_path
+        )
 
     data_crop_max = data_crop_origin + section_dims
     logging.info(
@@ -933,7 +945,7 @@ def make_layer_format(
                 layer_data.shape,
             )
         else:
-            print("leaving current layer format")
+            print("keeping current layer format")
             num_segments = np.max(input_data) + 1
             layer_data = input_data
     else:
@@ -961,3 +973,26 @@ def make_layer_format(
         }
     )
     return layer_data, segment_layer_header
+
+
+def get_layer_segments(layer_data: np.ndarray):
+    """
+    Find the segments present and corresponding layers for the given layer data map
+
+    :param np.ndarray layer_data: Segment data in layer format, of shape (layers, x, y, z), with values
+         corresponding to segment numbers, and 0 representing background
+    :return: Array of shape (num_segments, values=2), with values=[segment_number, layer_number]
+    """
+    layer_values = [
+        np.unique(layer_data[layer]) for layer in range(layer_data.shape[0])
+    ]
+    filtered_values = [values[values > 0] for values in layer_values]
+    segments_with_layer = np.concatenate(
+        [
+            np.stack([values, np.full_like(values, layer_num)], axis=1)
+            for layer_num, values in enumerate(filtered_values)
+        ],
+        axis=0,
+    )  # shape (all_segments, 2)
+
+    return segments_with_layer

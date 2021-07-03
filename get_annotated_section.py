@@ -13,6 +13,7 @@ from common import (
     get_completed_map,
     get_data_piece,
     get_full_path,
+    get_layer_segments,
     get_project_data,
     get_random_subdir,
     init_logging,
@@ -203,7 +204,7 @@ def find_random_section(config, subdir_num):
     valid_sections = find_all_sections(config, subdir_num)
     logging.info("Found %d valid sections" % (len(valid_sections),))
 
-    return np.random.choice(len(valid_sections))
+    return valid_sections[np.random.choice(len(valid_sections))]
 
 
 def verify_section(config, subdir_num, section_offset):
@@ -337,7 +338,8 @@ def get_section(config, subdir_num, section_offset):
                     this_annot_header,
                     this_annot_suboffset,
                 ) = this_annot
-                for piece_segment_num in range(this_annot_data.shape[0]):
+                segment_layers = get_layer_segments(this_annot_data)
+                for piece_segment_num, segment_layer in segment_layers:
                     # first check if this segment is already defined, eg from being initialised
                     # from a referring segment
                     if get_segment_number(
@@ -408,20 +410,18 @@ def get_section(config, subdir_num, section_offset):
                 # saved again in Slicer
                 # first make flat array containing segment ids.  segments should be non-overlapping,
                 # however when flattening the largest seg id is taken.
-                section_seg_ids = np.array(
-                    [
-                        get_segment_number(
-                            this_piece_index, x, segment_number_map
-                        )
-                        for x in range(this_annot_data.shape[0])
-                    ],
-                    dtype="int",
+                # to map segment ids read from file to output segment numbers for the segment, use
+                # vectorize to map values
+                vfunc = np.vectorize(
+                    lambda x: get_segment_number(
+                        this_piece_index, x, segment_number_map
+                    )
+                    if x > 0
+                    else 0
                 )
-                id_map = (
-                    this_annot_data * section_seg_ids[:, None, None, None]
-                ).max(
-                    axis=0
-                )  # (x,y,z)
+                mapped_annot_data = vfunc(this_annot_data)
+                # flatten layers using max function
+                id_map = mapped_annot_data.max(axis=0)  # (x,y,z)
                 piece_offset = this_piece_index * piece_size
                 annot_data_offset = piece_offset + this_annot_suboffset.astype(
                     "int"

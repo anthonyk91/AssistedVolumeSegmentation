@@ -69,15 +69,10 @@ def move_progress_piece(
     annot_offset = np.array(stored_data["offsets"][this_tile_name])
 
     # read annotations and create cropped tile (without overlap)
-    # todo: change to use binary labelmap format instead of segmentation as default.
-    #       save resulting output in labelmap format.  this requires changing the training
-    #       data loader so that it reads segments in labelmap format rather than as
-    #       segmentation files.  currently the output is segmentation data but the header
-    #       copied from the input doesn't match as the default save format is now labelmap.
-    #       One option is to simply write out here in labelmap format, as later the dataloader
-    #       will automatically convert labelmap to segmentation.
+    # currently this reads the data in segment format, performs calculations and then writes output in
+    # layer format.
     annot_data, annot_header, data_suboffset = get_annotation(
-        piece_index, inprogress_piece_path
+        piece_index, inprogress_piece_path, segment_format=True
     )
     if len(annot_data.shape) == 4:
         num_segments = annot_data.shape[0]
@@ -146,9 +141,6 @@ def move_progress_piece(
     # remove data sub-offset field as annotation now is the full extent of the tile
     annot_header["space origin"] = np.zeros((3,), dtype="float")
 
-    # todo: fix output.  currently it seems to fail for the annotated file to be
-    #   loaded into slicer.  check what differences there are with the annotation
-    #   files generated with get_annotation_piece
     # scales = np.identity(3, dtype="float")
     scales = annot_header["space directions"][-3:]
     write_annot_file(

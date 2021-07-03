@@ -107,7 +107,7 @@ def get_neighbour_annotation(
         neighbour_data,
         neighbour_header,
         data_suboffset_float,
-    ) = get_annotation(neighbour_index, completed_path)
+    ) = get_annotation(neighbour_index, completed_path, segment_format=True)
 
     seg_fields_list = strip_header(neighbour_header, neighbour_index)
 
