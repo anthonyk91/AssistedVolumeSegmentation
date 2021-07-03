@@ -4,4 +4,4 @@ PyYAML~=5.4
 filelock~=3.0
 tqdm~=4.61
 Pillow~=8.2
-
+h5py~=3.3

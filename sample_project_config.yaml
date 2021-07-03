@@ -61,6 +61,12 @@ slicer_path: /usr/local/bin/Slicer
 # semantic segmentation, which will output regions corresponding with cells (but not capture different instances).
 segmentation_method: "semantic"
 
+# If using semantic segmentation, the number of foreground classes needs to be specified. for
+# example if only one class is used, to represent cell-bodies, the value would be 1.  If two
+# classes are used, for example using a second class to represent a cell feature, then the value
+# is 2.  This field is not used for instance segmentation.
+semantic_segmentation_classes: 1
+
 # the following values generally represent paths where output will be stored, and may not
 # need to be modified.
 
@@ -115,3 +121,16 @@ generate_number_tiles: 4
 # by the model will be real-valued (floats), and this threshold is used to change them
 # to true/false values in the segmentation.
 generated_threshold: 0.2
+
+# filename of data generated over a full sample.
+full_generated_data_file: generated_data.h5
+
+# method for generating full sample output.
+# - real_valued: produce an output array with real-values representing confidence that each
+#                position is foreground, which allows a threshold to be chosen afterwards.
+#                this is only relevant for semantic segmentation.  in this case the output array
+#                generated will be shape (semantic_segmentation_classes, x, y, z), with dtype=float
+# - flattened:   produce an output array with integer values representing either semantic segmentation
+#                classes or instance segmentations.  the threshold used for setting foreground values
+#                is set in generated_threshold.
+full_generate_format: "real_valued"

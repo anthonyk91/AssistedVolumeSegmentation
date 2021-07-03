@@ -23,6 +23,7 @@ a pandas dataframe in the same directory containing the meta-info e.g. file path
 import os
 import random
 
+import h5py
 import numpy as np
 import utils.dataloader_utils as dutils
 
@@ -44,6 +45,7 @@ from batchgenerators.transforms.utility_transforms import (
 )
 
 from common import (
+    flat_to_indexed,
     get_annot_map,
     get_completed_map,
     get_source_data,
@@ -55,6 +57,7 @@ from get_annotated_section import find_all_subdir_sections, get_section
 
 CONFIG_ENV_VAR = "ANNOTATION_CONFIG"
 GENERATE_SUBDIR = "GENERATE_SUBDIR_NUMBER"
+GENERATE_FULL = "GENERATE_FULL"
 
 
 def get_train_generators(cf, logger):
@@ -113,45 +116,63 @@ def get_test_generator(cf, logger):
     config_file = os.environ[CONFIG_ENV_VAR]
     config = load_config(config_file)
 
-    # generate tiles for one specified subdir
-    subdir_num = int(os.environ[GENERATE_SUBDIR])
+    generate_full_output = GENERATE_FULL in os.environ
 
-    # generate tiles from unannotated regions
-    annot_map, annot_header, annotation_scale = get_annot_map(
-        config, subdir_num
-    )
+    if generate_full_output:
+        # specify all covered tiles
+        logger.info("Producing output for full data")
+        num_subdirs = len(config["subdir_paths"])
+        batch_data = []
+        for subdir_num in num_subdirs:
+            annot_map, _, _ = get_annot_map(config, subdir_num)
+            logger.info(
+                "Subdir %d, %d covered tiles" % (subdir_num, annot_map.sum())
+            )
+            valid_tiles = np.stack(np.where(annot_map > 0), axis=1)
+            batch_data.extend([(subdir_num, t) for t in valid_tiles])
 
-    completed_map = get_completed_map(config, subdir_num, annot_map.shape)
-    incomplete_map = annot_map - completed_map
+    else:
+        # generate tiles for one specified subdir
+        subdir_num = int(os.environ[GENERATE_SUBDIR])
 
-    logger.info(
-        "Found %d incomplete tiles out of %d"
-        % (incomplete_map.sum(), annot_map.sum())
-    )
+        # generate tiles from unannotated regions
+        annot_map, annot_header, annotation_scale = get_annot_map(
+            config, subdir_num
+        )
 
-    # choose subset of tiles to cover
-    incomplete_tiles = np.stack(np.where(incomplete_map > 0), axis=1)
-    chosen_indices = np.random.choice(
-        len(incomplete_tiles),
-        (config["generate_number_tiles"],),
-        replace=False,
-    )
-    chosen_tiles = incomplete_tiles[chosen_indices]  # (num_tile, 3)
+        completed_map = get_completed_map(config, subdir_num, annot_map.shape)
+        incomplete_map = annot_map - completed_map
 
-    logger.info("Using %d incomplete tiles" % (len(chosen_tiles),))
+        logger.info(
+            "Found %d incomplete tiles out of %d"
+            % (incomplete_map.sum(), annot_map.sum())
+        )
 
-    # todo: find sections for incomplete tiles?  need to find how this is done with the automated
-    #      overlapping tile selection
+        # choose subset of tiles to cover
+        incomplete_tiles = np.stack(np.where(incomplete_map > 0), axis=1)
+        chosen_indices = np.random.choice(
+            len(incomplete_tiles),
+            (config["generate_number_tiles"],),
+            replace=False,
+        )
+        chosen_tiles = incomplete_tiles[chosen_indices]  # (num_tile, 3)
 
-    # # for now just choose an origin section from each tile
-    # test_sections = [x * annotation_scale for x in chosen_tiles]
-    # logger.info("Using %d incomplete sections" % (len(test_sections),))
+        logger.info("Using %d incomplete tiles" % (len(chosen_tiles),))
 
-    # create data as a list of tuples, each with the subdir number and tile offset
-    batch_data = [(subdir_num, x) for x in chosen_tiles]
+        # todo: find sections for incomplete tiles?  need to find how this is done with the automated
+        #      overlapping tile selection
+
+        # # for now just choose an origin section from each tile
+        # test_sections = [x * annotation_scale for x in chosen_tiles]
+        # logger.info("Using %d incomplete sections" % (len(test_sections),))
+
+        # create data as a list of tuples, each with the subdir number and tile offset
+        batch_data = [(subdir_num, x) for x in chosen_tiles]
 
     batch_gen = {}
-    batch_iterator = PatientBatchIterator(batch_data, cf, config)
+    batch_iterator = PatientBatchIterator(
+        batch_data, cf, config, generate_full_output
+    )
     batch_gen["test"] = batch_iterator
     # batch_gen["test"] = create_data_gen_pipeline(
     #     test_sections,
@@ -171,6 +192,10 @@ def get_test_generator(cf, logger):
     # batch_gen["n_test"] = len(patch_crop_coords_list)  # test_sections)
     batch_gen["n_test"] = len(chosen_tiles)
 
+    # set up for full export if parameter defined in environ
+    if generate_full_output:
+        batch_gen["exporter"] = BatchExporter(cf, config)
+        batch_gen["repeat_test_output"] = True
     return batch_gen
 
 
@@ -237,6 +262,108 @@ def create_data_gen_pipeline(
         seeds=range(cf.n_workers),
     )
     return multithreaded_generator
+
+
+class BatchExporter:
+    """
+    Class for exporting generated segmentations.  Results of segmentations are passed to this class which stores
+    results into a HDF5 file, representing the segmentation over the full data.
+    """
+
+    def __init__(self, cf, annotation_config):
+        self.cf = cf
+        self.annotation_config = annotation_config
+        self.tile_size = np.array(
+            self.annotation_config["annotation_size"]
+        )  # shape (3,)
+        self.output_datasets = []
+        self.init_output()
+
+    def init_output(self):
+        """ Initialise output to write to, as a HDF5 file """
+        if "full_generated_data_file" not in self.annotation_config:
+            raise RuntimeError(
+                'Field "full_generated_data_file" not defined in project config file'
+            )
+        filename = self.annotation_config["full_generated_data_file"]
+
+        if self.annotation_config["full_generate_format"] == "real_valued":
+            assert self.annotation_config["segmentation_method"] == "semantic"
+
+        # produce output for each subdir
+        for subdir_num in range(len(self.annotation_config["subdir_paths"])):
+            # get dimensions of region
+            annot_map, _, _ = get_annot_map(
+                self.annotation_config, subdir_num
+            )  # shape (tiles_x, tiles_y, tiles_z)
+            annotation_extent = np.array(annot_map.shape) * self.tile_size
+
+            output_full_path = os.path.join(
+                self.annotation_config["project_folder"],
+                self.annotation_config["subdir_paths"],
+                filename,
+            )
+
+            if self.annotation_config["full_generate_format"] == "real_valued":
+                output_dtype = "f"
+                output_shape = [
+                    self.annotation_config["semantic_segmentation_classes"]
+                ] + annotation_extent.tolist()
+            else:
+                output_dtype = "i"
+                output_shape = annotation_extent.tolist()
+
+            # initialise HDF5 file for output
+            h5file = h5py.File(output_full_path, "w")
+            h5_dataset = h5file.create_dataset(
+                "generated_data", shape=output_shape, dtype=output_dtype
+            )
+            self.output_datasets.append(h5_dataset)
+
+    def export_segmentation(
+        self, identifier: int, segmentation_data: np.ndarray
+    ):
+        """
+        Write given segmentation to stored array
+
+        :param int identifier: Identifier for a given tile, which is used as a patient ID
+        :param np.ndarray segmentation_data: Array of resulting segmentation data, of shape (segs, 1, x, y, z) or
+               (1, x, y, z), with float values representing segmentation foreground confidence
+        """
+        # get tile index from identifier
+        subdir_num, index = flat_to_indexed(identifier, self.annotation_config)
+
+        # record tile in HDF5 file
+        subdir_dataset = self.output_datasets[subdir_num]
+        origin = index * self.tile_size
+        max = origin + self.tile_size
+
+        if segmentation_data.ndim == 4:
+            # add extra dim for consistency with format with ndim=5
+            segmentation_data = segmentation_data[None, :, :, :, :]
+
+        if self.annotation_config["full_generate_format"] == "real_valued":
+            # write real value output
+            # todo: for multi-class case, ensure that the data contains segmentation data in the correct
+            #       index, for example if only class 2 is present, make sure it has seg_dims=2 and the values
+            #       are written in the corresponding dimension
+            assert segmentation_data.shape[0] == subdir_dataset.shape[0]
+            subdir_dataset[
+                :, origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
+            ] = segmentation_data[:, 0, :, :, :]
+        elif self.annotation_config["full_generate_format"] == "flattened":
+            # find integer values for segmentation output using threshold and flatten down
+            seg_nums = np.arange(segmentation_data.shape[0])
+            threshold_array = (
+                segmentation_data
+                > self.annotation_config["generated_threshold"]
+            ).astype("int")
+            flat_array = (
+                seg_nums[:, None, None, None] * threshold_array[:, 0, :, :, :]
+            ).max(axis=0)
+            subdir_dataset[
+                origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
+            ] = flat_array
 
 
 class BatchGenerator(SlimDataLoaderBase):
@@ -368,7 +495,9 @@ class PatientBatchIterator(SlimDataLoaderBase):
     batch_size = n_2D_patches in 2D .
     """
 
-    def __init__(self, data, cf, annotation_config):  # threads in augmenter
+    def __init__(
+        self, data, cf, annotation_config, generate_full
+    ):  # threads in augmenter
         super(PatientBatchIterator, self).__init__(data, 0)
         self.cf = cf
         # self.patient_ix = 0
@@ -381,8 +510,14 @@ class PatientBatchIterator(SlimDataLoaderBase):
         self.annotation_config = annotation_config
 
         self.num_patches = None
+        self.generate_full = generate_full
+        self.complete = False
 
     def generate_train_batch(self):
+        if self.generate_full and self.complete:
+            # if there is a request for data after the data has been completed, return None
+            return None
+
         # get data for this tile
         chosen_tile = self._data[self.tile_index]
         chosen_tile_subdir_num, chosen_tile_index = chosen_tile
@@ -409,7 +544,7 @@ class PatientBatchIterator(SlimDataLoaderBase):
         tile_id = indexed_to_flat(
             chosen_tile_subdir_num,
             chosen_tile_index,
-            self.annotation_config["annotation_size"],
+            self.annotation_config,
         )
 
         # get 3D targets for evaluation
@@ -496,5 +631,7 @@ class PatientBatchIterator(SlimDataLoaderBase):
         self.tile_index += 1
         if self.tile_index == len(self._data):
             self.tile_index = 0
+            if self.generate_full:
+                self.complete = True
 
         return out_batch
