@@ -7,6 +7,7 @@ import shutil
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import h5py
 import nibabel as nib
 import nrrd
 import numpy as np
@@ -591,13 +592,19 @@ def get_source_data(
             config, subdir_num, data_crop_origin, crop_size, check_only=False
         )
     else:
+        format = config["source_data_format"][subdir_num]
         logging.info(
-            "Reading source data with origin %s, size %s from stack data"
-            % (data_crop_origin, crop_size)
+            "Reading source data with origin %s, size %s with source format %s"
+            % (data_crop_origin, crop_size, format)
         )
-        return get_source_data_stack(
-            config, subdir_num, data_crop_origin, crop_size
-        )
+        if format == "tiff-stack":
+            return get_source_data_stack(
+                config, subdir_num, data_crop_origin, crop_size
+            )
+        else:
+            return get_source_data_hdf5(
+                config, subdir_num, data_crop_origin, crop_size
+            )
 
 
 def get_source_data_stack(
@@ -633,6 +640,44 @@ def get_source_data_stack(
     )
 
     return get_cropped_source_data(stack_list, data_crop_origin, data_crop_max)
+
+
+def get_source_data_hdf5(
+    config: Dict[str, Any],
+    subdir_num: int,
+    data_crop_origin: np.ndarray,
+    crop_size: np.ndarray,
+) -> np.ndarray:
+    """
+    Get source data from the given crop position from HDF5 format source data, using
+    the specified crop size.
+
+    :param Dict[str, Any] config: Config dictionary
+    :param int subdir_num: Subdir data number
+    :param np.ndarray data_crop_origin: Origin in source units of section to crop, array of shape (3,)
+    :param np.ndarray crop_size: Size of section to crop, array of shape (3,)
+    :return: Array containing specified cropped region from source data
+    """
+    source_path = config["source_data_paths"][subdir_num]
+    h5_source = h5py.File(source_path, "r")
+    h5_data_name = config["source_hdf5_dataset_name"]
+    source_dataset = h5_source[h5_data_name]
+
+    logging.info(
+        "Reading from source H5 file %s, source data size %s"
+        % (h5_source, source_dataset.shape)
+    )
+    if source_dataset.ndim != 3:
+        raise RuntimeError(
+            "H5 source data has %d dims, expected 3" % source_dataset.ndim
+        )
+
+    cropped_data = source_dataset[
+        data_crop_origin[0] : data_crop_origin[0] + crop_size[0],
+        data_crop_origin[1] : data_crop_origin[1] + crop_size[1],
+        data_crop_origin[2] : data_crop_origin[2] + crop_size[2],
+    ]
+    return cropped_data
 
 
 def get_source_tile_data(
