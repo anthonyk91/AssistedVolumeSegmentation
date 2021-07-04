@@ -1,6 +1,6 @@
 diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
 --- medicaldetectiontoolkit/default_configs.py	2021-06-30 22:16:51.830606096 +0100
-+++ revised/default_configs.py	2021-06-30 21:17:20.369628749 +0100
++++ revised/default_configs.py	2021-07-03 23:28:13.314401105 +0100
 @@ -140,4 +140,7 @@
          # for probabilistic detection
          self.n_latent_dims = 0
@@ -11,7 +11,7 @@ diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
  
 diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
 --- medicaldetectiontoolkit/exec.py	2021-06-30 22:16:51.831606108 +0100
-+++ revised/exec.py	2021-06-30 21:24:18.110466504 +0100
++++ revised/exec.py	2021-07-03 23:28:13.315401118 +0100
 @@ -114,12 +114,19 @@
              if cf.do_validation:
                  val_results_list = []
@@ -33,9 +33,26 @@ diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
                      #val_results_list.append([results_dict['boxes'], batch['pid']])
                      val_results_list.append(({k:v for k,v in results_dict.items() if k != "seg_preds"}, batch["pid"]))
  
+@@ -157,7 +164,15 @@
+     test_predictor = Predictor(cf, net, logger, mode='test')
+     test_evaluator = Evaluator(cf, logger, mode='test')
+     batch_gen = data_loader.get_test_generator(cf, logger)
+-    test_results_list = test_predictor.predict_test_set(batch_gen, return_results=True)
++    if "repeat_test_output" in batch_gen and batch_gen["repeat_test_output"]:
++        # if generating the full dataset, loop until the full data has been covered
++        i = 0
++        while not batch_gen["test"].complete:
++            logger.info("Running generation step %d" % i)
++            test_results_list = test_predictor.predict_test_set(batch_gen, return_results=True)
++            i += 1
++    else:
++        test_results_list = test_predictor.predict_test_set(batch_gen, return_results=True)
+     test_evaluator.evaluate_predictions(test_results_list)
+     test_evaluator.score_test_df()
+ 
 diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
 --- medicaldetectiontoolkit/models/mrcnn.py	2021-06-30 22:16:51.832606120 +0100
-+++ revised/models/mrcnn.py	2021-06-30 21:37:30.249718694 +0100
++++ revised/models/mrcnn.py	2021-07-03 23:28:13.377401928 +0100
 @@ -874,8 +874,12 @@
                      if cf.dim == 2 else mutils.unmold_mask_3D(masks[i], boxes[i], permuted_image_shape))
              # if masks are returned, take max over binary full masks of all predictions in this image.
@@ -63,16 +80,48 @@ diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
  
 diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
 --- medicaldetectiontoolkit/predictor.py	2021-06-30 22:16:51.832606120 +0100
-+++ revised/predictor.py	2021-06-30 21:37:30.218718329 +0100
-@@ -155,6 +155,7 @@
++++ revised/predictor.py	2021-07-04 16:32:56.994547613 +0100
+@@ -126,7 +126,6 @@
+ 
+         return results_dict
+ 
+-
+     def predict_test_set(self, batch_gen, return_results=True):
+         """
+         wrapper around test method, which loads multiple (or one) epoch parameters (temporal ensembling), loops through
+@@ -146,6 +145,17 @@
+                         self.epoch_ranking]
+         n_test_plots = min(batch_gen['n_test'], 1)
+ 
++        # read batches first, to allow instances to be re-used over ensembles when doing a traversal over all
++        # tiles in the dataset
++        test_batches = []
++        for i in range(batch_gen["n_test"]):
++            next_batch = next(batch_gen["test"])
++            if next_batch is None:
++                break
++            else:
++                test_batches.append(next_batch)
++        
++        # todo: remove limit on number of ensembles used:
+         for rank_ix, weight_path in enumerate(weight_paths):
+ 
+             self.logger.info(('tmp ensembling over rank_ix:{} epoch:{}'.format(rank_ix, weight_path)))
+@@ -155,9 +165,10 @@
              plot_batches = np.random.choice(np.arange(batch_gen['n_test']), size=n_test_plots, replace=False)
  
              with torch.no_grad():
+-                for i in range(batch_gen['n_test']):
+-
+-                    batch = next(batch_gen['test'])
 +                print("batch_gen n_test %d" % batch_gen["n_test"])
-                 for i in range(batch_gen['n_test']):
++                #for i in range(batch_gen['n_test']):
++                #    batch = next(batch_gen['test'])
++                for i, batch in enumerate(test_batches):
  
-                     batch = next(batch_gen['test'])
-@@ -165,10 +166,16 @@
+                     # store batch info in patient entry of results dict.
+                     if rank_ix == 0:
+@@ -165,10 +176,16 @@
                          dict_of_patient_results[batch['pid']]['results_dicts'] = []
                          dict_of_patient_results[batch['pid']]['patient_bb_target'] = batch['patient_bb_target']
                          dict_of_patient_results[batch['pid']]['patient_roi_labels'] = batch['patient_roi_labels']
@@ -89,8 +138,13 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
                      if i in plot_batches and not self.patched_patient:
                          # view qualitative results of random test case
-@@ -195,6 +202,8 @@
+@@ -193,8 +210,13 @@
+                             self.logger.info("WARNING: error in plotting example test batch: {}".format(e))
  
+ 
++        # remove input batches from memory
++        del test_batches
++        
          self.logger.info('finished predicting test set. starting post-processing of predictions.')
          results_per_patient = []
 +        results_per_patient_seg = {}
@@ -98,7 +152,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
          # loop over patients again to flatten results across epoch predictions.
          # if provided, add ground truth boxes for evaluation.
-@@ -208,9 +217,13 @@
+@@ -208,9 +230,13 @@
                                       for batch_instance in range(b_size)]
  
              # TODO return for instance segmentation:
@@ -112,7 +166,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
              # add 3D ground truth boxes for evaluation.
              for b in range(p_dict['patient_bb_target'].shape[0]):
-@@ -219,6 +232,14 @@
+@@ -219,11 +245,19 @@
                                                       'box_label': p_dict['patient_roi_labels'][b][t],
                                                       'box_type': 'gt'})
              results_per_patient.append([results_dict, pid])
@@ -126,8 +180,16 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
 +                results_per_patient_inst[pid].append(results_dict['inst_preds'])
  
          # save out raw predictions.
-         out_string = 'raw_pred_boxes_hold_out_list' if self.cf.hold_out_test_set else 'raw_pred_boxes_list'
-@@ -250,8 +271,64 @@
+-        out_string = 'raw_pred_boxes_hold_out_list' if self.cf.hold_out_test_set else 'raw_pred_boxes_list'
+-        with open(os.path.join(self.cf.fold_dir, '{}.pickle'.format(out_string)), 'wb') as handle:
+-            pickle.dump(results_per_patient, handle)
++        #out_string = 'raw_pred_boxes_hold_out_list' if self.cf.hold_out_test_set else 'raw_pred_boxes_list'
++        #with open(os.path.join(self.cf.fold_dir, '{}.pickle'.format(out_string)), 'wb') as handle:
++        #    pickle.dump(results_per_patient, handle)
+ 
+         if return_results:
+             final_patient_box_results = [(res_dict["boxes"], pid) for res_dict, pid in results_per_patient]
+@@ -250,8 +284,68 @@
                  assert results_per_patient[ix][1] == final_patient_box_results[ix][1], "should be same pid"
                  results_per_patient[ix][0]["boxes"] = final_patient_box_results[ix][0]
  
@@ -159,10 +221,14 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
 +
 +                # write out merged instance segmentations to file
 +                if self.cf.segmentation_method is not None:
-+
-+                    out_file = os.path.join(self.cf.fold_dir, "instseg_pid_%d.pickle" % pid)
-+                    with open(out_file, "wb") as fh:
-+                        pickle.dump(merged_segs, fh)
++                    if "exporter" in batch_gen:
++                        # pass result to exporter
++                        batch_gen["exporter"].export_segmentation(pid, merged_segs)
++                    else:
++                        # write to file
++                        out_file = os.path.join(self.cf.fold_dir, "instseg_pid_%d.pickle" % pid)
++                        with open(out_file, "wb") as fh:
++                            pickle.dump(merged_segs, fh)
 +
              return results_per_patient
  
@@ -192,7 +258,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
      def load_saved_predictions(self, apply_wbc=False):
          """
-@@ -414,6 +491,12 @@
+@@ -414,6 +508,12 @@
                                   for batch_instance in range(org_img_shape[0])]
          results_dict['seg_preds'] = np.array([[item for d in results_list for item in d['seg_preds'][batch_instance]]
                                                for batch_instance in range(org_img_shape[0])])
@@ -205,7 +271,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
          if self.mode == 'val':
              try:
                  results_dict['torch_loss'] = results_list[0]['torch_loss']
-@@ -450,11 +533,23 @@
+@@ -450,11 +550,23 @@
              # counts patch instances per pixel-position.
              patch_overlap_map = np.zeros_like(out_seg_preds, dtype='uint8')
  
@@ -230,7 +296,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
                  else:
                      out_seg_preds[pc[4]:pc[5], :, pc[0]:pc[1], pc[2]:pc[3], ] += patches_dict['seg_preds'][pix]
                      patch_overlap_map[pc[4]:pc[5], :, pc[0]:pc[1], pc[2]:pc[3], ] += 1
-@@ -462,6 +557,7 @@
+@@ -462,6 +574,7 @@
              # take mean in overlapping areas.
              out_seg_preds[patch_overlap_map > 0] /= patch_overlap_map[patch_overlap_map > 0]
              results_dict['seg_preds'] = out_seg_preds
@@ -238,7 +304,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
              # unmold box outputs. loop over patches.
              for pix, pc in enumerate(patch_crops):
-@@ -556,7 +652,8 @@
+@@ -556,7 +669,8 @@
              results_dict = {}
              # flatten out batch elements from chunks ([chunk, chunk] -> [b, b, b, b, ...])
              results_dict['boxes'] = [item for d in chunk_dicts for item in d['boxes']]
@@ -248,7 +314,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
              if self.mode == 'val':
                  try:
-@@ -598,13 +695,16 @@
+@@ -598,13 +712,16 @@
              box_patch_id = np.array([b[1]['patch_id'] for b in boxes])
  
              if 0 not in box_scores.shape:
@@ -267,7 +333,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
          # add gt boxes back to new output list.
          out_patient_results_list[bix].extend([box for box in b if box['box_type'] == 'gt'])
-@@ -673,6 +773,7 @@
+@@ -673,6 +790,7 @@
      :param n_ens: number of models, that are ensembled. (-> number of expected predicitions per position)
      :return: keep_scores: (n_keep)  new scores of boxes to be kept.
      :return: keep_coords: (n_keep, (y1, x1, y2, x2, (z1), (z2)) new coordinates of boxes to be kept.
@@ -275,7 +341,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
      """
      dim = 2 if dets.shape[1] == 7 else 3
      y1 = dets[:, 0]
-@@ -696,6 +797,7 @@
+@@ -696,6 +814,7 @@
      keep = []
      keep_scores = []
      keep_coords = []
@@ -283,7 +349,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
      while order.size > 0:
          i = order[0]  # higehst scoring element
-@@ -763,12 +865,13 @@
+@@ -763,12 +882,13 @@
          if avg_score > 0.01:
              keep_scores.append(avg_score)
              keep_coords.append(avg_coords)
@@ -300,7 +366,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
 diff -ruN medicaldetectiontoolkit/requirements.txt revised/requirements.txt
 --- medicaldetectiontoolkit/requirements.txt	2021-06-30 22:16:51.832606120 +0100
-+++ revised/requirements.txt	2021-06-30 22:16:05.224052817 +0100
++++ revised/requirements.txt	2021-07-03 23:28:13.315401118 +0100
 @@ -1,12 +1,12 @@
 -batchgenerators==0.20.1
 +batchgenerators~=0.20 # 0.20.1
