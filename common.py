@@ -670,57 +670,53 @@ def get_source_tile_data(
 
 
 def flat_to_indexed(
-    flat_pos: int, shapes: np.ndarray
+    flat_pos: int, config: Dict[str, Any]
 ) -> Tuple[int, np.ndarray]:
     """
     Convert a position from flat format (single number) to indexed format (subdir number and array of 3 numbers)
 
     :param int flat_pos: Position in flat format
-    :param np.ndarray  shapes: Shape of space that the flat format is calculated from (array of 3 numbers)
-    :return: Tuple of the resulting subdir number and position in indexed format
+    :param Dict[str, Any] config: Config dictionary
+    :return: Tuple of the resulting subdir number and position in indexed format represented as an array
     """
-    positions = []
-    remainder = flat_pos
-    while len(shapes) >= 1:
-        multiplier = np.prod(shapes)
-        last_pos = remainder // multiplier
-        positions.append(last_pos)
-        remainder -= multiplier * last_pos
-        shapes = shapes[:-1]
-    positions.append(remainder)
+    # find subdir number first
+    num_subdirs = len(config["subdir_paths"])
+    remainder = flat_pos // num_subdirs
+    subdir_num = flat_pos - remainder * num_subdirs
 
-    subdir_num = positions[0]
+    # get annotation map dims for this subdir
+    annot_map, _, _ = get_annot_map(config, subdir_num)
 
-    return subdir_num, np.array(positions[:0:-1])
+    position_index = np.unravel_index(remainder, annot_map.shape)
+
+    return subdir_num, np.array(position_index)
 
 
 def indexed_to_flat(
-    subdir_num: int, indexed_pos: np.ndarray, shapes: np.ndarray
+    subdir_num: int, indexed_pos: np.ndarray, config: Dict[str, Any]
 ):
     """
     Convert a position from indexed format (array of 3 numbers and subdir number) to flat format (single number)
 
     :param int subdir_num: Subdir number
     :param np.ndarray indexed_pos: Position in indexed format, ie array of 3 values
-    :param np.ndarray shapes: Shape of space that the flat format is calculated from (array of 3 numbers)
+    :param Dict[str, Any] config: Config dictionary
     :return: Value of position in flat representation
     """
-    if len(indexed_pos) != len(shapes):
+    num_subdirs = len(config["subdir_paths"])
+    annot_map, _, _ = get_annot_map(config, subdir_num)
+
+    if len(indexed_pos) != len(annot_map.shape):
         raise RuntimeError(
             "indexed_to_flat, expect positions and shapes to be same size, got %s, %s"
-            % (indexed_pos, shapes)
+            % (indexed_pos, annot_map.shape)
         )
 
-    multiplier = 1
-    sum = 0
-    for idx in range(len(shapes)):
-        sum += indexed_pos[idx] * multiplier
-        multiplier *= shapes[idx]
+    # produce flat index of positions
+    flat_positions = np.ravel_multi_index(indexed_pos, annot_map.shape)
 
-    # include subdir value
-    sum += subdir_num * multiplier
-
-    return sum
+    # produce flat index using num subdirs as outer multiplier
+    return subdir_num + flat_positions * num_subdirs
 
 
 # todo: change all ".._full" param calls to use function call

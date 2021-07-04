@@ -243,13 +243,12 @@ def get_generated_piece(
         os.path.join(generator_files_path, generated_glob)
     )
 
-    annotation_size = np.array(config["annotation_size"])
     found_indices = []
     for f in generated_list:
         file = os.path.split(f)[-1]
         filebase, _ = os.path.splitext(file)
         flat_index = int(filebase.split("_")[-1])
-        subdir_and_index = flat_to_indexed(flat_index, annotation_size)
+        subdir_and_index = flat_to_indexed(flat_index, config)
         found_indices.append(subdir_and_index)
 
     # if chosen index is not specified, select from available generated annotations
@@ -271,7 +270,7 @@ def get_generated_piece(
 
     # read generated segmentation
     generated_filename = "instseg_pid_%d.pickle" % indexed_to_flat(
-        chosen_subdir_num, chosen_index, annotation_size
+        chosen_subdir_num, chosen_index, config
     )
     generated_path = os.path.join(generator_files_path, generated_filename)
     generated_annot = pickle.load(open(generated_path, "rb"))
