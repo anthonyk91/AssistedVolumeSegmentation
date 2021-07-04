@@ -123,7 +123,7 @@ def get_test_generator(cf, logger):
         logger.info("Producing output for full data")
         num_subdirs = len(config["subdir_paths"])
         batch_data = []
-        for subdir_num in num_subdirs:
+        for subdir_num in range(num_subdirs):
             annot_map, _, _ = get_annot_map(config, subdir_num)
             logger.info(
                 "Subdir %d, %d covered tiles" % (subdir_num, annot_map.sum())
@@ -190,7 +190,8 @@ def get_test_generator(cf, logger):
 
     # print("num patches %d" % len(patch_crop_coords_list))
     # batch_gen["n_test"] = len(patch_crop_coords_list)  # test_sections)
-    batch_gen["n_test"] = len(chosen_tiles)
+    # batch_gen["n_test"] = len(chosen_tiles)
+    batch_gen["n_test"] = min(len(batch_data), config["generate_number_tiles"])
 
     # set up for full export if parameter defined in environ
     if generate_full_output:
@@ -300,21 +301,24 @@ class BatchExporter:
 
             output_full_path = os.path.join(
                 self.annotation_config["project_folder"],
-                self.annotation_config["subdir_paths"],
+                self.annotation_config["subdir_paths"][subdir_num],
                 filename,
             )
 
             if self.annotation_config["full_generate_format"] == "real_valued":
                 output_dtype = "f"
-                output_shape = [
-                    self.annotation_config["semantic_segmentation_classes"]
-                ] + annotation_extent.tolist()
+                # todo: allow multiple classes to be output.  currently semantic segmentations are squashed into one class.
+                num_classes = 1 #self.annotation_config["semantic_segmentation_classes"]
+                output_shape = [num_classes] + annotation_extent.tolist()
             else:
                 output_dtype = "i"
                 output_shape = annotation_extent.tolist()
 
             # initialise HDF5 file for output
+            if os.path.exists(output_full_path):
+                raise RuntimeError("Output file %s already exists" % output_full_path)
             h5file = h5py.File(output_full_path, "w")
+            print("creating array generated_data with shape", output_shape, "dtype", output_dtype)
             h5_dataset = h5file.create_dataset(
                 "generated_data", shape=output_shape, dtype=output_dtype
             )
@@ -347,7 +351,8 @@ class BatchExporter:
             # todo: for multi-class case, ensure that the data contains segmentation data in the correct
             #       index, for example if only class 2 is present, make sure it has seg_dims=2 and the values
             #       are written in the corresponding dimension
-            assert segmentation_data.shape[0] == subdir_dataset.shape[0]
+            if segmentation_data.shape[0] != subdir_dataset.shape[0]:
+                raise RuntimeError("Unexpected, exported data shape %s, export dataset shape %s" % (segmentation_data.shape, subdir_dataset.shape))
             subdir_dataset[
                 :, origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
             ] = segmentation_data[:, 0, :, :, :]
@@ -521,6 +526,7 @@ class PatientBatchIterator(SlimDataLoaderBase):
         # get data for this tile
         chosen_tile = self._data[self.tile_index]
         chosen_tile_subdir_num, chosen_tile_index = chosen_tile
+        print("test data reader, loading tile %d of %d (%.1f %%), subdir %d index %s" % (self.tile_index, len(self._data), 100*self.tile_index / len(self._data), chosen_tile_subdir_num, chosen_tile_index))
         # get data from source and set segmentation as zeros
 
         tile_data = get_source_tile_data(
@@ -568,7 +574,7 @@ class PatientBatchIterator(SlimDataLoaderBase):
             batch_3D.update(
                 {
                     "patient_bb_target": batch_3D["bb_target"],
-                    "patient_roi_labels": batch_3D["roi_labels"],
+                    "patient_roi_labels": batch_3D["class_target"],
                     "original_img_shape": out_data.shape,
                 }
             )

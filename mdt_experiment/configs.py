@@ -12,7 +12,7 @@ class configs(DefaultConfigs):
     def __init__(self, server_env=None):
         # load config file
         annot_config_file = os.environ[CONFIG_ENV_VAR]
-        annot_config = load_config(annot_config_file)
+        self.annot_config = load_config(annot_config_file)
 
         #########################
         #    Preprocessing      #
@@ -49,7 +49,7 @@ class configs(DefaultConfigs):
         #########################
 
         # limit number of workers partly as a result of memory usage
-        self.n_workers = min(4, os.cpu_count() - 1)
+        #self.n_workers = min(4, os.cpu_count() - 1)
 
         # select modalities from preprocessed data
         self.channels = [0]
@@ -58,10 +58,10 @@ class configs(DefaultConfigs):
         # patch_size to be used for training. pre_crop_size is the patch_size before data augmentation.
         self.pre_crop_size_2D = [300, 300]
         self.patch_size_2D = [288, 288]
-        self.pre_crop_size_3D = annot_config[
+        self.pre_crop_size_3D = self.annot_config[
             "section_dimensions"
         ]  # [92, 92, 92]  # [156, 156, 96]
-        self.patch_size_3D = annot_config["section_input_dimensions"]
+        self.patch_size_3D = self.annot_config["section_input_dimensions"]
         self.patch_size = (
             self.patch_size_2D if self.dim == 2 else self.patch_size_3D
         )
@@ -131,8 +131,8 @@ class configs(DefaultConfigs):
         #########################
 
         # set the top-n-epochs to be saved for temporal averaging in testing.
-        self.save_n_models = 5
-        self.test_n_epochs = 5
+        self.save_n_models = self.annot_config["num_ensemble_models"] # 5
+        self.test_n_epochs = self.annot_config["num_ensemble_models"] # 5
         # set a minimum epoch number for saving in case of instabilities in the first phase of training.
         self.min_save_thresh = 0 if self.dim == 2 else 0
 
@@ -226,7 +226,7 @@ class configs(DefaultConfigs):
         self.detection_min_confidence = self.min_det_thresh
 
         # if 'True', loss distinguishes all classes, else only foreground vs. background (class agnostic).
-        self.class_specific_seg_flag = False
+        self.class_specific_seg_flag = "semantic_segmentation_classes" in self.annot_config and self.annot_config["semantic_segmentation_classes"] > 1
         if self.class_specific_seg_flag:
             self.num_seg_classes = 3
             self.wce_weights = [1, 1, 1]

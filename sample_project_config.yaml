@@ -113,9 +113,18 @@ train_validation_splits: [0.9, 0.1]
 # reproducibility
 split_random_seed: 41235
 
-# when generating segmentations after training, specify number of tiles to generate.
-# these can then be corrected before performing another training cycle
+# when generating segmentations after training, specify number of tiles to generate at a time.
+# these can then be corrected before performing another training cycle. this value also sets
+# the number of tiles that will be processed together when generating a full segmentation of the
+# data.  setting a high value can result in a lot of memory being needed (this is influenced by
+# num_ensemble_models).
 generate_number_tiles: 4
+
+# this specifies the number of different versions of the trained model to save and use for generating
+# output annotations.  models saved from different stages of training, and combining the models can
+# allow improved accuracy.  a larger number of models will require more memory when processing (along
+# with generate_number_tiles).
+num_ensemble_models: 2
 
 # set threshold for setting generated segmentations as filled or not.  the values produced
 # by the model will be real-valued (floats), and this threshold is used to change them
