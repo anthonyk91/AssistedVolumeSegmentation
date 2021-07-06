@@ -2,13 +2,13 @@
 # read data from given files, and produce a reduced image of each data file
 
 import argparse
-import h5py
 import logging
 import math
 import os
 import shutil
 import subprocess
 
+import h5py
 import nibabel as nib
 import numpy as np
 from PIL import Image
@@ -27,7 +27,7 @@ from common import (
 
 def reduce_source_data(config, bound_size, subdir_num, launch_editor):
     """
-    Read source data, from either a stack of tiff files from the given dir or an HDF5 data file, and resize the 
+    Read source data, from either a stack of tiff files from the given dir or an HDF5 data file, and resize the
     source volume data to the given size.
 
     :param config: Configuration map
@@ -37,7 +37,7 @@ def reduce_source_data(config, bound_size, subdir_num, launch_editor):
     :return: Array of source images reduced to given size
     """
     source_format = config["source_data_format"][subdir_num]
-    read_tiff_stack = (source_format == "tiff-stack")
+    read_tiff_stack = source_format == "tiff-stack"
 
     # select source data path according to index in config file. assume source data path is an array
     data_path = get_source_data_path(config, subdir_num)
@@ -50,7 +50,13 @@ def reduce_source_data(config, bound_size, subdir_num, launch_editor):
     )
     logging.info(
         "reading from source %s, format %s, writing to %s, %s, bound size %s"
-        % (data_path, source_format, write_data_path, write_coverage_path, bound_size)
+        % (
+            data_path,
+            source_format,
+            write_data_path,
+            write_coverage_path,
+            bound_size,
+        )
     )
 
     if read_tiff_stack:
@@ -206,6 +212,7 @@ def main():
         subdir_num,
         args.launch,
     )
+
 
 if __name__ == "__main__":
     init_logging()
