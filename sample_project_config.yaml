@@ -16,6 +16,19 @@ subdir_paths:
 source_data_paths: 
  - /run/media/anthony/a77cfb18-3e3d-4ccd-9f0a-a84acfdf5459/diamond/121431
 
+# specify the format that the source data is stored as.  this needs to be set for each
+# source subdirectory. options:
+# - "tiff-stack": the path in source_data_paths contains a number of .tiff files (with
+#                 file extension .tiff), which are read in order to represent a 3D stack
+# - "hdf5": the path in source_data_paths is a file in HDF5 format, which contains a
+#                 hdf5 dataset with the name given by source_hdf5_dataset_name. this contains
+#                 an array with shape (x, y, z) representing the source data
+source_data_format:
+ - "tiff-stack"
+
+# name of dataset entry in HDF5 file if HDF5 source data is used.
+source_hdf5_dataset_name: "data"
+
 # data_stats is used for holding values used for normalising data.  this is a list
 # of values representing mean, std, min, max. this can be calculated with find_stats.py.
 # (find_stats can only be run after the overview has been created however, to define the region
