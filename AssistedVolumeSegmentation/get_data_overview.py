@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     default_seg_file,
     get_file_list,
     get_full_path,
@@ -187,6 +187,7 @@ def reduce_source_data(config, bound_size, subdir_num, launch_editor):
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", help="Project config file", required=True
@@ -215,5 +216,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()

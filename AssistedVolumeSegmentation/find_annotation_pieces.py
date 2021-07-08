@@ -7,7 +7,7 @@ import nibabel as nib
 import nrrd
 import numpy as np
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     annotation_field_map,
     get_full_path,
     init_logging,
@@ -117,6 +117,7 @@ def find_annotation_pieces(config, subdir_num, write_format="nrrd"):
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", help="Project config file", required=True
@@ -137,5 +138,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()

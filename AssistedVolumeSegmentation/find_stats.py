@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import tqdm
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     completed_value,
     get_annot_map,
     get_source_data,
@@ -63,6 +63,7 @@ def find_data_stats(
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", help="Project config file", required=True
@@ -83,5 +84,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()
