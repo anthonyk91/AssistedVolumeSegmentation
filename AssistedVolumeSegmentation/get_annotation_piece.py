@@ -16,7 +16,7 @@ import nrrd
 import numpy as np
 from filelock import FileLock
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     annot_suffix_labelmap,
     annot_suffix_segments,
     annotation_field_map,
@@ -723,6 +723,7 @@ def make_annotation_piece(
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--index",
@@ -767,5 +768,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()

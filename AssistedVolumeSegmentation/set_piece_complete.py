@@ -7,7 +7,7 @@ import shutil
 import nibabel as nib
 import numpy as np
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     annot_suffix_segments,
     assign_cropped_region,
     data_suffix,
@@ -169,6 +169,7 @@ def move_progress_piece(
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--index",
@@ -200,5 +201,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()

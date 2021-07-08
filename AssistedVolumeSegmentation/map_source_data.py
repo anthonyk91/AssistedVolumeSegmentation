@@ -7,7 +7,7 @@ import os
 import nibabel as nib
 import numpy as np
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     completed_value,
     data_suffix,
     get_annot_map,
@@ -69,6 +69,7 @@ def map_source_data(config, subdir_num):
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", help="Project config file", required=True
@@ -93,5 +94,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()

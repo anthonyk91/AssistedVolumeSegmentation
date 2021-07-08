@@ -5,7 +5,7 @@ import logging
 
 import numpy as np
 
-from common import (
+from AssistedVolumeSegmentation.common import (
     assign_cropped_region,
     completed_value,
     get_all_subdirs,
@@ -450,6 +450,7 @@ def get_section(config, subdir_num, section_offset):
 
 
 def main():
+    init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--section_offset", help="Origin of section", required=False, nargs="+"
@@ -519,5 +520,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_logging()
     main()
