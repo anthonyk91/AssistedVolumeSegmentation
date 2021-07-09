@@ -102,7 +102,12 @@ def main():
         },
     )
 
-    install_custom_dependencies()
+    try:
+        install_custom_dependencies()
+    except Exception as e:
+        print(
+            "Failed to install medicaldetectiontoolkit, training and inference of models will not be available however annotation tools can still be used."
+        )
 
 
 if __name__ == "__main__":
