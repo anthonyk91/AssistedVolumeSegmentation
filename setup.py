@@ -65,7 +65,7 @@ def install_custom_dependencies():
 
     # install MDT package
     subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "-e", mdt_target_path]
+        [sys.executable, "setup.py", "install"], cwd=mdt_target_path
     )
 
     print("Done installing custom dependencies")
