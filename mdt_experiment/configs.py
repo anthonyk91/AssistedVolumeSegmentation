@@ -2,9 +2,9 @@ import os
 
 import default_configs
 import numpy as np
+from common import load_config
 from default_configs import DefaultConfigs
 
-from common import load_config
 from mdt_experiment.data_loader import CONFIG_ENV_VAR
 
 
@@ -31,7 +31,15 @@ class configs(DefaultConfigs):
         self.dim = 3
 
         # one out of ['mrcnn', 'retina_net', 'retina_unet', 'detection_unet', 'ufrcnn', 'detection_unet'].
-        self.model = "detection_unet"  # "mrcnn"  # "retina_unet"
+        if self.annot_config["segmentation_method"] == "semantic":
+            self.model = "detection_unet"  # "mrcnn"  # "retina_unet"
+        elif self.annot_config["segmentation_method"] == "instance":
+            self.model = "mrcnn"  # "retina_unet"
+        else:
+            raise RuntimeError(
+                "Unknown segmentation_method: %s"
+                % self.annot_config["segmentation_method"]
+            )
 
         DefaultConfigs.__init__(self, self.model, server_env, self.dim)
 
@@ -49,7 +57,7 @@ class configs(DefaultConfigs):
         #########################
 
         # limit number of workers partly as a result of memory usage
-        #self.n_workers = min(4, os.cpu_count() - 1)
+        # self.n_workers = min(4, os.cpu_count() - 1)
 
         # select modalities from preprocessed data
         self.channels = [0]
@@ -131,8 +139,8 @@ class configs(DefaultConfigs):
         #########################
 
         # set the top-n-epochs to be saved for temporal averaging in testing.
-        self.save_n_models = self.annot_config["num_ensemble_models"] # 5
-        self.test_n_epochs = self.annot_config["num_ensemble_models"] # 5
+        self.save_n_models = self.annot_config["num_ensemble_models"]  # 5
+        self.test_n_epochs = self.annot_config["num_ensemble_models"]  # 5
         # set a minimum epoch number for saving in case of instabilities in the first phase of training.
         self.min_save_thresh = 0 if self.dim == 2 else 0
 
@@ -226,7 +234,10 @@ class configs(DefaultConfigs):
         self.detection_min_confidence = self.min_det_thresh
 
         # if 'True', loss distinguishes all classes, else only foreground vs. background (class agnostic).
-        self.class_specific_seg_flag = "semantic_segmentation_classes" in self.annot_config and self.annot_config["semantic_segmentation_classes"] > 1
+        self.class_specific_seg_flag = (
+            "semantic_segmentation_classes" in self.annot_config
+            and self.annot_config["semantic_segmentation_classes"] > 1
+        )
         if self.class_specific_seg_flag:
             self.num_seg_classes = 3
             self.wce_weights = [1, 1, 1]
