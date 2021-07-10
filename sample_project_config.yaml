@@ -63,15 +63,14 @@ slicer_path: /usr/local/bin/Slicer
 # define the segmentation method.  there are two options available here,
 # - "semantic" specifies that semantic segmentation annotations will be used, where one segment will be used to define
 # all of the regions of a class (such as all of the regions inside cells), and different segments
-# can represent different classes (such as cell bodies or other features).  in this case, in
-# the annotation tool (Slicer) all cell bodies will have the same colour.
+# can represent different classes (such as cell bodies or other kinds of features).  when doing annotation for
+# semantic segmentation, in the annotation tool (Slicer) all cell bodies will have the same colour.  Semantic
+# segmentation can also be used on data that has been annotated with multiple instances of the same class (ie the
+# annotation is instance segmentation), by choosing "semantic" here and setting semantic_segmentation_classes to 1,
+# which will treat all of the instance segments as the one class.
 # - "instance" specifies that instance segmentation will be used, where all segments are part of the same
 # class (such as cells), and various segments represent various instances (eg individual cells).  in the
 # annotation tool individual cells will have different colours.
-# - "semantic_from_instance" specifies that the model will be trained using semantic segmentation, however the source
-# data is annotated as instances.  for example the annotation files contain multiple segments, representing different
-# instances of cells.  this will treat all segments as members of the same class (cells) and use the data to perform
-# semantic segmentation, which will output regions corresponding with cells (but not capture different instances).
 segmentation_method: "semantic"
 
 # If using semantic segmentation, the number of foreground classes needs to be specified. for

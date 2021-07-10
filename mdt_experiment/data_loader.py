@@ -43,7 +43,6 @@ from batchgenerators.transforms.spatial_transforms import SpatialTransform
 from batchgenerators.transforms.utility_transforms import (
     ConvertSegToBoundingBoxCoordinates,
 )
-
 from common import (
     flat_to_indexed,
     get_annot_map,
@@ -308,7 +307,7 @@ class BatchExporter:
             if self.annotation_config["full_generate_format"] == "real_valued":
                 output_dtype = "f"
                 # todo: allow multiple classes to be output.  currently semantic segmentations are squashed into one class.
-                num_classes = 1 #self.annotation_config["semantic_segmentation_classes"]
+                num_classes = 1  # self.annotation_config["semantic_segmentation_classes"]
                 output_shape = [num_classes] + annotation_extent.tolist()
             else:
                 output_dtype = "i"
@@ -316,9 +315,16 @@ class BatchExporter:
 
             # initialise HDF5 file for output
             if os.path.exists(output_full_path):
-                raise RuntimeError("Output file %s already exists" % output_full_path)
+                raise RuntimeError(
+                    "Output file %s already exists" % output_full_path
+                )
             h5file = h5py.File(output_full_path, "w")
-            print("creating array generated_data with shape", output_shape, "dtype", output_dtype)
+            print(
+                "creating array generated_data with shape",
+                output_shape,
+                "dtype",
+                output_dtype,
+            )
             h5_dataset = h5file.create_dataset(
                 "generated_data", shape=output_shape, dtype=output_dtype
             )
@@ -352,7 +358,10 @@ class BatchExporter:
             #       index, for example if only class 2 is present, make sure it has seg_dims=2 and the values
             #       are written in the corresponding dimension
             if segmentation_data.shape[0] != subdir_dataset.shape[0]:
-                raise RuntimeError("Unexpected, exported data shape %s, export dataset shape %s" % (segmentation_data.shape, subdir_dataset.shape))
+                raise RuntimeError(
+                    "Unexpected, exported data shape %s, export dataset shape %s"
+                    % (segmentation_data.shape, subdir_dataset.shape)
+                )
             subdir_dataset[
                 :, origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
             ] = segmentation_data[:, 0, :, :, :]
@@ -447,6 +456,23 @@ class BatchGenerator(SlimDataLoaderBase):
                     this_subdir_num,
                     this_section_offset,
                 )
+
+                # combine sections if necessary
+                if (
+                    self.annotation_config["segmentation_method"] == "semantic"
+                    and self.annotation_config["semantic_segmentation_classes"]
+                    == 1
+                    and section_num_segments > 1
+                ):
+                    # this data contains multiple segments but one semantic segmentation class is needed,
+                    # merge into a common class
+                    section_annot = (section_annot > 0).astype("int")
+                # if self.annotation_config["segmentation_method"] == "semantic" \
+                #     and self.annotation_config["semantic_segmentation_classes"] != section_num_segments:
+                #     # todo: check this isn't affected if classes are not present with semantic seg
+                #     # the number of segment classes does not match the number of segment classes present
+                #     # in the data.
+                #     raise RuntimeError("Unexpected, %d semantic segmentation classes and %d found" % (self.annotation_config["semantic_segmentation_classes"], section_num_segments))
             else:
                 # get data from source and set segmentation as zeros
                 section_data = get_source_data(
@@ -526,7 +552,16 @@ class PatientBatchIterator(SlimDataLoaderBase):
         # get data for this tile
         chosen_tile = self._data[self.tile_index]
         chosen_tile_subdir_num, chosen_tile_index = chosen_tile
-        print("test data reader, loading tile %d of %d (%.1f %%), subdir %d index %s" % (self.tile_index, len(self._data), 100*self.tile_index / len(self._data), chosen_tile_subdir_num, chosen_tile_index))
+        print(
+            "test data reader, loading tile %d of %d (%.1f %%), subdir %d index %s"
+            % (
+                self.tile_index,
+                len(self._data),
+                100 * self.tile_index / len(self._data),
+                chosen_tile_subdir_num,
+                chosen_tile_index,
+            )
+        )
         # get data from source and set segmentation as zeros
 
         tile_data = get_source_tile_data(

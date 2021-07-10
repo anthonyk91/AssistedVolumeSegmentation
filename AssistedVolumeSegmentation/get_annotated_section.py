@@ -2,6 +2,7 @@
 # this requires combining data from neighbouring slices and matching associated annotation segments
 import argparse
 import logging
+from typing import Any, Dict, Tuple
 
 import numpy as np
 
@@ -271,14 +272,18 @@ def find_random_section_stochastic(config, subdir_num, max_tries=1e4):
     return section_origin
 
 
-def get_section(config, subdir_num, section_offset):
+def get_section(
+    config: Dict[str, Any], subdir_num: int, section_offset: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, int]:
     """
     Find annotation pieces corresponding with the given section
 
-    :param config: Config dictionary
-    :param subdir_num: Subdir number
-    :param section_offset: Offset in source units of given section
-    :return: Array of annotated segment data, and array of source data
+    :param Dict[str, Any] config: Config dictionary
+    :param int subdir_num: Subdir number
+    :param np.ndarray section_offset: Offset in source units of given section, shape (3,)
+    :return: Tuple of array of annotated segment data of shape (x,y,z) with dimensions of section and
+            values as integers of segment numbers, array of source data with shape (x,y,z), and count
+            of number of annotated segments in the section
     """
 
     completed_piece_path = get_full_path(
@@ -408,20 +413,33 @@ def get_section(config, subdir_num, section_offset):
                 # crop corresponding section from annotation.  the annotation array is expected to
                 # cover the full tile, however check the tile offset anyway in case it was opened and
                 # saved again in Slicer
-                # first make flat array containing segment ids.  segments should be non-overlapping,
-                # however when flattening the largest seg id is taken.
-                # to map segment ids read from file to output segment numbers for the segment, use
-                # vectorize to map values
-                vfunc = np.vectorize(
-                    lambda x: get_segment_number(
-                        this_piece_index, x, segment_number_map
+
+                # handle different cases for setting segment ids in the resulting cropped section
+                if config["segmentation_method"] == "semantic":
+                    # the annot data is in layer format, maintain the original ids and flatten
+                    # layers just using max
+                    id_map = this_annot_data.max(axis=0)
+                elif config["segmentation_method"] == "instance":
+                    # first make flat array containing segment ids.  segments should be non-overlapping,
+                    # however when flattening the largest seg id is taken.
+                    # to map segment ids read from file to output segment numbers for the segment, use
+                    # vectorize to map values
+                    vfunc = np.vectorize(
+                        lambda x: get_segment_number(
+                            this_piece_index, x, segment_number_map
+                        )
+                        if x > 0
+                        else 0
                     )
-                    if x > 0
-                    else 0
-                )
-                mapped_annot_data = vfunc(this_annot_data)
-                # flatten layers using max function
-                id_map = mapped_annot_data.max(axis=0)  # (x,y,z)
+                    mapped_annot_data = vfunc(this_annot_data)
+                    # flatten layers using max function
+                    id_map = mapped_annot_data.max(axis=0)  # (x,y,z)
+                else:
+                    raise RuntimeError(
+                        "Unknown segmentation_method: %s"
+                        % config["segmetation_method"]
+                    )
+
                 piece_offset = this_piece_index * piece_size
                 annot_data_offset = piece_offset + this_annot_suboffset.astype(
                     "int"
