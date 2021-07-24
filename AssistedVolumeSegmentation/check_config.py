@@ -32,7 +32,7 @@ def check_config(
     else:
         logging.info(
             "%d keys from sample config not found, please refer to sample config file for examples: %s"
-            % sample_config_path
+            % (missing_count, sample_config_path)
         )
 
 
