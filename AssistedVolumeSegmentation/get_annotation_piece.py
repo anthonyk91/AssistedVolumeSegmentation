@@ -9,7 +9,7 @@ import os
 import pickle
 import random
 import subprocess
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import nibabel as nib
 import nrrd
@@ -20,6 +20,8 @@ from AssistedVolumeSegmentation.common import (
     annot_suffix_labelmap,
     annot_suffix_segments,
     annotation_field_map,
+    check_index,
+    check_index_str,
     completed_value,
     data_suffix,
     flat_to_indexed,
@@ -41,12 +43,13 @@ sample_tags = "TerminologyEntry:Segmentation category and type - 3D Slicer Gener
 annot_dtype = "uint8"
 
 
-def choose_annotation_piece(annot_map, completed_map):
+def choose_annotation_piece(annot_map, completed_map, in_progress_map):
     """
     From the map of available and completed pieces, select a piece to be annotated next
 
     :param annot_map: Overview map of covered pieces
     :param completed_map: Map of completed pieces
+    :param in_progress_map: Map of in progress pieces
     :return: Array of size (3,) of index of chosen piece
     """
 
@@ -56,7 +59,7 @@ def choose_annotation_piece(annot_map, completed_map):
         logging.warning("Unexpected, annotation map contains values >1")
         annot_map = np.clip(annot_map, 0, completed_value)
 
-    incomplete_pieces = annot_map - completed_map
+    incomplete_pieces = annot_map - completed_map - in_progress_map
     logging.info("%d incomplete pieces" % incomplete_pieces.sum())
 
     # todo: add more sophisticated selection, such as encouraging groups (eg 2x2?) which allow more
@@ -473,53 +476,33 @@ def get_source_piece(
     )
 
 
-def check_index_str(specified_index, completed_map, annot_map):
-    chosen_index = np.array([int(x) for x in specified_index])
-    if len(chosen_index) != 3:
-        raise RuntimeError("Invalid specified index: %s" % specified_index)
-    if completed_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
-        raise RuntimeError(
-            "Invalid specified index: %s, already completed" % specified_index
-        )
-    if not annot_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
-        raise RuntimeError(
-            "Invalid specified index: %s, not a valid annotation"
-            % specified_index
-        )
-    if (chosen_index >= np.array(annot_map.shape)).any() or (
-        chosen_index < 0
-    ).any():
-        raise RuntimeError(
-            "Invalid specified index: %s, out of range 0,0,0 - %s"
-            % (specified_index, annot_map.shape)
-        )
-    return chosen_index
-
-
-def make_annotation_piece(
+def get_subdir_and_index(
     config: Dict[str, Any],
-    index_str: str,
-    launch_editor: bool,
-    read_generated: bool,
-    subdir_str: str,
-    fold_number_str: str,
-    write_method="segments",
+    subdir_str: Optional[str],
+    index_str: Optional[str],
 ):
-    # create a new annotation piece from the source data, including overlap with neighbouring annotations
-
-    # check chosen subdir and index if specified
+    """
+    Find the subdir and index from the specified strings, and check if valid
+    """
     chosen_index = None
     chosen_subdir_num = None
+    annot_map = None
+    completed_map = None
+    in_progress_map = None
+
+    # check chosen subdir and index if specified
     if subdir_str is not None:
         if not isinstance(subdir_str, str) or not subdir_str.isnumeric():
             raise RuntimeError("Subdir should be a number")
         chosen_subdir_num = int(subdir_str)
 
-    annotation_scale = np.array(config["annotation_size"])
     if chosen_subdir_num is not None:
         annot_map, annot_header, _ = get_annot_map(config, chosen_subdir_num)
         completed_map = get_completed_map(
             config, chosen_subdir_num, annot_map.shape
+        )
+        in_progress_map = get_completed_map(
+            config, chosen_subdir_num, annot_map.shape, find_in_progress=True
         )
 
     if index_str is not None:
@@ -530,6 +513,79 @@ def make_annotation_piece(
 
         # check if specified index is part of annotation map and not completed
         chosen_index = check_index_str(index_str, completed_map, annot_map)
+        # also check in progress map
+        check_index(chosen_index, in_progress_map, annot_map)
+
+    return (
+        chosen_subdir_num,
+        chosen_index,
+        annot_map,
+        completed_map,
+        in_progress_map,
+    )
+
+
+def make_annotation_piece(
+    config: Dict[str, Any],
+    index_str: Optional[List[str]],
+    launch_editor: bool,
+    read_generated: bool,
+    subdir_str: Optional[str],
+    fold_number_str: str,
+    read_preferred: bool,
+    write_method="segments",
+):
+    """
+    Create a new annotation piece from the source data, including overlap with neighbouring annotations
+    """
+    chosen_index = None
+    chosen_subdir_num = None
+    annot_map = None
+    completed_map = None
+    in_progress_map = None
+
+    # choose from the preferred segment list if defined. this will override subdir_str or
+    # index_str values
+    if read_preferred:
+        # select the first index value available from the preferred list that is not already annotated
+        # or in progress
+        for preferred_string in config["tiles_of_interest"]:
+            values_str = preferred_string.split(" ")
+            subdir_str = values_str[0]
+            index_str = values_str[1:]
+
+            try:
+                (
+                    chosen_subdir_num,
+                    chosen_index,
+                    annot_map,
+                    completed_map,
+                    in_progress_map,
+                ) = get_subdir_and_index(config, subdir_str, index_str)
+            except RuntimeError as e:
+                logging.info(
+                    "Skipping tile of interest %s, reason: %s"
+                    % (preferred_string, e)
+                )
+
+            if chosen_subdir_num is not None and chosen_index is not None:
+                break
+
+        if subdir_str is None or index_str is None:
+            logging.warning(
+                "Read from preferred tiles of interest specified but none found"
+            )
+    else:
+        # try and read subdir and index from parameters
+        (
+            chosen_subdir_num,
+            chosen_index,
+            annot_map,
+            completed_map,
+            in_progress_map,
+        ) = get_subdir_and_index(config, subdir_str, index_str)
+
+    annotation_scale = np.array(config["annotation_size"])
 
     if read_generated:
         # read annotation from generated data
@@ -567,12 +623,33 @@ def make_annotation_piece(
     else:
         # choose a new piece to annotate from all incomplete pieces
         # require subdir_num to be defined
-        if subdir_str is None:
-            raise RuntimeError(
-                "Subdir number must be defined when selecting annotation piece"
+        if chosen_subdir_num is None:
+            # choose a subdir at random
+            chosen_subdir_num = np.random.randint(len(config["subdir_paths"]))
+
+        # read maps if not specified
+        if (
+            annot_map is None
+            or completed_map is None
+            or in_progress_map is None
+        ):
+            annot_map, annot_header, _ = get_annot_map(
+                config, chosen_subdir_num
             )
+            completed_map = get_completed_map(
+                config, chosen_subdir_num, annot_map.shape
+            )
+            in_progress_map = get_completed_map(
+                config,
+                chosen_subdir_num,
+                annot_map.shape,
+                find_in_progress=True,
+            )
+
         if chosen_index is None:
-            chosen_index = choose_annotation_piece(annot_map, completed_map)
+            chosen_index = choose_annotation_piece(
+                annot_map, completed_map, in_progress_map
+            )
         generated_annot = None
 
     logging.info("Chosen index: %s" % chosen_index)
@@ -741,6 +818,11 @@ def main():
         "--launch", help="Launch Slicer to edit piece", action="store_true"
     )
     parser.add_argument(
+        "--preferred",
+        help="Choose from preferred tile list",
+        action="store_true",
+    )
+    parser.add_argument(
         "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
@@ -764,6 +846,7 @@ def main():
         args.read_generated,
         args.subdir,
         args.fold_number,
+        args.preferred,
     )
 
 

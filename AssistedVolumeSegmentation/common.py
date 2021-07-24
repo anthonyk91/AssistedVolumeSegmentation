@@ -83,6 +83,7 @@ def get_completed_map(
     config: Dict[str, Any],
     subdir_num: int,
     annot_pieces_dim: Optional[Tuple[int, int, int]] = None,
+    find_in_progress: bool = False,
 ) -> np.ndarray:
     """
     Get map of pieces that have been annotated and recorded as completed (ie the pieces
@@ -91,6 +92,7 @@ def get_completed_map(
     :param Dict[str, Any] config: Configuration dictionary
     :param int subdir_num: Subdirectory number
     :param Optional[Tuple[int, int, int]] annot_pieces_dim: Dimensions of full annotation pieces map
+    :param bool find_in_progress: Find pieces from the in-progress folder instead of completed folder
     :return: Array of annotation pieces, of same size as annotation map, representing which pieces
            have been completed
     """
@@ -101,9 +103,10 @@ def get_completed_map(
         )
         annot_pieces_dim = annot_map.shape
 
-    completed_piece_path = get_full_path(
-        config, subdir_num, "completed_piece_path"
-    )
+    piece_path_name = "completed_piece_path"
+    if find_in_progress:
+        piece_path_name = "inprogress_piece_path"
+    completed_piece_path = get_full_path(config, subdir_num, piece_path_name)
     found_indices = find_path_pieces(completed_piece_path)
 
     # create occupancy grid of found completed annotations
@@ -1037,3 +1040,42 @@ def get_layer_segments(layer_data: np.ndarray):
     )  # shape (all_segments, 2)
 
     return segments_with_layer
+
+
+def check_index_str(
+    specified_index: List[str],
+    completed_map: np.ndarray,
+    annot_map: np.ndarray,
+):
+    """
+    Find the index number from the index string, and check if not already completed
+    """
+    chosen_index = np.array([int(x) for x in specified_index])
+    check_index(chosen_index, completed_map, annot_map)
+    return chosen_index
+
+
+def check_index(
+    chosen_index: List[int], completed_map: np.ndarray, annot_map: np.ndarray
+):
+    """
+    Find the index number from the index string, and check if not already completed
+    """
+    if len(chosen_index) != 3:
+        raise RuntimeError("Invalid specified index: %s" % (chosen_index,))
+    if completed_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
+        raise RuntimeError(
+            "Invalid specified index: %s, already completed" % (chosen_index,)
+        )
+    if not annot_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
+        raise RuntimeError(
+            "Invalid specified index: %s, not a valid annotation"
+            % (chosen_index,)
+        )
+    if (chosen_index >= np.array(annot_map.shape)).any() or (
+        chosen_index < 0
+    ).any():
+        raise RuntimeError(
+            "Invalid specified index: %s, out of range 0,0,0 - %s"
+            % (chosen_index, annot_map.shape)
+        )

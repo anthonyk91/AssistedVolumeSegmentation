@@ -44,6 +44,7 @@ from batchgenerators.transforms.utility_transforms import (
     ConvertSegToBoundingBoxCoordinates,
 )
 from common import (
+    check_index,
     flat_to_indexed,
     get_annot_map,
     get_completed_map,
@@ -131,32 +132,78 @@ def get_test_generator(cf, logger):
             batch_data.extend([(subdir_num, t) for t in valid_tiles])
 
     else:
-        # generate tiles for one specified subdir
-        subdir_num = int(os.environ[GENERATE_SUBDIR])
+        # choose tiles to output.  if preferred tiles are specified, try using each
+        # preferred tiles if it is not yet defined, and choose random subdir/tiles for
+        # remaining
+        # first define maps for each subdir
+        subdir_maps = {}
+        for subdir_num in range(len(config["subdir_paths"])):
+            # generate tiles from unannotated regions
+            annot_map, annot_header, annotation_scale = get_annot_map(
+                config, subdir_num
+            )
 
-        # generate tiles from unannotated regions
-        annot_map, annot_header, annotation_scale = get_annot_map(
-            config, subdir_num
-        )
+            completed_map = get_completed_map(
+                config, subdir_num, annot_map.shape
+            )
+            in_progress_map = get_completed_map(
+                config, subdir_num, annot_map.shape, find_in_progress=True
+            )
+            incomplete_map = annot_map - completed_map - in_progress_map
+            subdir_maps[subdir_num] = (
+                annot_map,
+                completed_map,
+                in_progress_map,
+                incomplete_map,
+            )
 
-        completed_map = get_completed_map(config, subdir_num, annot_map.shape)
-        incomplete_map = annot_map - completed_map
+        # check each preferred tile in turn
+        chosen_tiles_list = []
+        num_generate = config["generate_number_tiles"]
+        for preferred_index in config["tiles_of_interest"]:
+            index_vals_str = preferred_index.split(" ")
+            index_vals = [int(x) for x in index_vals_str]
+            subdir_num = index_vals[0]
+            index_number = index_vals[1:]
+            _, completed_map, in_progress_map, _ = subdir_maps[subdir_num]
+            try:
+                check_index(index_number, completed_map, in_progress_map)
+            except RuntimeError as e:
+                # piece is already annotated/in-progress, or invalid
+                logger.info(
+                    "Skipping preferred tile %s, reason %s" % (index_vals, e)
+                )
+                continue
+            # piece is valid
+            chosen_tiles_list.append(index_vals)
+            if len(chosen_tiles_list) == num_generate:
+                break
 
-        logger.info(
-            "Found %d incomplete tiles out of %d"
-            % (incomplete_map.sum(), annot_map.sum())
-        )
+        logger.info("Using preferred tiles: %s" % (chosen_tiles_list,))
 
-        # choose subset of tiles to cover
-        incomplete_tiles = np.stack(np.where(incomplete_map > 0), axis=1)
-        chosen_indices = np.random.choice(
-            len(incomplete_tiles),
-            (config["generate_number_tiles"],),
-            replace=False,
-        )
-        chosen_tiles = incomplete_tiles[chosen_indices]  # (num_tile, 3)
+        # choose a number of random tiles for remaining
+        for _ in range(num_generate - len(chosen_tiles_list)):
+            # choose a random subdir
+            subdir_num = np.random.randint(len(config["subdir_paths"]))
+            (
+                annot_map,
+                completed_map,
+                in_progress_map,
+                incomplete_map,
+            ) = subdir_maps[subdir_num]
 
-        logger.info("Using %d incomplete tiles" % (len(chosen_tiles),))
+            logger.info(
+                "Choosing random tile from subdir %d, %d incomplete tiles out of %d"
+                % (subdir_num, incomplete_map.sum(), annot_map.sum())
+            )
+
+            # choose tile to cover
+            incomplete_tiles = np.stack(np.where(incomplete_map > 0), axis=1)
+            chosen_set_index = np.random.randint(incomplete_tiles.shape[0])
+            chosen_tile_index = incomplete_tiles[chosen_set_index]  # (3,)
+            chosen_tiles_list.append([subdir_num] + chosen_tile_index.tolist())
+
+        logger.info("Chosen tiles: %s" % (chosen_tiles_list,))
 
         # todo: find sections for incomplete tiles?  need to find how this is done with the automated
         #      overlapping tile selection
@@ -165,8 +212,8 @@ def get_test_generator(cf, logger):
         # test_sections = [x * annotation_scale for x in chosen_tiles]
         # logger.info("Using %d incomplete sections" % (len(test_sections),))
 
-        # create data as a list of tuples, each with the subdir number and tile offset
-        batch_data = [(subdir_num, x) for x in chosen_tiles]
+        # create data as a list of tuples, each with the subdir number and tile index
+        batch_data = [(x[0], x[1:]) for x in chosen_tiles_list]
 
     batch_gen = {}
     batch_iterator = PatientBatchIterator(
