@@ -31,6 +31,7 @@ from AssistedVolumeSegmentation.common import (
     get_full_path,
     get_project_data,
     get_source_data,
+    get_tiles_of_interest,
     indexed_to_flat,
     init_logging,
     load_config,
@@ -221,22 +222,13 @@ def get_neighbour_annotation(
     return valid_annot, valid_fields
 
 
-def get_generated_piece(
+def find_generated_pieces(
     config: Dict[str, Any],
-    chosen_subdir_num: int,
-    chosen_index: int,
     fold_number: int,
 ):
     """
-    Get generated segmentation and data with given index
-
-    :param Dict[str, Any] config: Config dictionary
-    :param int chosen_subdir_num: Subdir num of chosen generated piece (or None if not defined)
-    :param int chosen_index: Index of chosen generated piece (or None if not defined)
-    :param int fold_number: Fold number to get data from
-    :return:
+    Get a list of piece tile indices that have been generated
     """
-    # get list of available generated pieces.
     generator_path = get_full_path(config, None, "generator_output_path")
     generator_files_path = os.path.join(
         generator_path, "fold_%d" % fold_number
@@ -260,13 +252,41 @@ def get_generated_piece(
             % generator_files_path
         )
 
+    return found_indices
+
+
+def get_generated_piece(
+    config: Dict[str, Any],
+    chosen_subdir_num: Optional[int],
+    chosen_index: Optional[np.ndarray],
+    fold_number: int,
+):
+    """
+    Get generated segmentation and data with given index
+
+    :param Dict[str, Any] config: Config dictionary
+    :param Optional[int] chosen_subdir_num: Subdir num of chosen generated piece (or None if not defined)
+    :param Optional[np.ndarray] chosen_index: Index of chosen generated piece, array of shape (3,) (or None if not defined)
+    :param int fold_number: Fold number to get data from
+    :return:
+    """
+    # get list of available generated pieces.
+    found_indices = find_generated_pieces(config, fold_number)
+
     # if chosen index is not specified, select from available generated annotations
     if chosen_subdir_num is None and chosen_index is None:
         chosen_subdir_num, chosen_index = random.choice(found_indices)
     elif chosen_subdir_num is not None and chosen_index is not None:
-        # otherwise check
-        this_subdir_and_index = (chosen_subdir_num, chosen_index)
-        if this_subdir_and_index not in found_indices:
+        # otherwise check specified tile is in the set of generated tiles
+        found = False
+        for check_subdir, check_index in found_indices:
+            if (
+                check_subdir == chosen_subdir_num
+                and (chosen_index == check_index).all()
+            ):
+                found = True
+                break
+        if not found:
             raise RuntimeError(
                 "Invalid provided subdir %d and index %s, not found in generated pieces: %s"
                 % (chosen_subdir_num, chosen_index, found_indices)
@@ -280,6 +300,10 @@ def get_generated_piece(
     # read generated segmentation
     generated_filename = "instseg_pid_%d.pickle" % indexed_to_flat(
         chosen_subdir_num, chosen_index, config
+    )
+    generator_path = get_full_path(config, None, "generator_output_path")
+    generator_files_path = os.path.join(
+        generator_path, "fold_%d" % fold_number
     )
     generated_path = os.path.join(generator_files_path, generated_filename)
     generated_annot = pickle.load(open(generated_path, "rb"))
@@ -531,6 +555,35 @@ def get_subdir_and_index(
     )
 
 
+def get_subdir_and_index_vals(
+    config: Dict[str, Any],
+    chosen_subdir_num: int,
+    index_vals: np.ndarray,
+):
+    """
+    Find the subdir and index from the specified strings, and check if valid
+    """
+    # check chosen subdir and index
+    annot_map, annot_header, _ = get_annot_map(config, chosen_subdir_num)
+    completed_map = get_completed_map(
+        config, chosen_subdir_num, annot_map.shape
+    )
+    in_progress_map = get_completed_map(
+        config, chosen_subdir_num, annot_map.shape, find_in_progress=True
+    )
+
+    # check if specified index is part of annotation map and not completed
+    check_index(index_vals, completed_map, annot_map)
+    # also check in progress map
+    check_index(index_vals, in_progress_map, annot_map)
+
+    return (
+        annot_map,
+        completed_map,
+        in_progress_map,
+    )
+
+
 def make_annotation_piece(
     config: Dict[str, Any],
     index_str: Optional[List[str]],
@@ -555,32 +608,56 @@ def make_annotation_piece(
     if read_preferred:
         # select the first index value available from the preferred list that is not already annotated
         # or in progress
-        tiles_of_interest = config["tiles_of_interest"] or []
-        for preferred_index in tiles_of_interest:
-            values_str = preferred_string.split(" ")
-            subdir_str = values_str[0]
-            index_str = values_str[1:]
+        preferred_tiles = get_tiles_of_interest(config)
+        if read_generated:
+            # reduce preferred list to only include generated tiles
+            generated_tiles = find_generated_pieces(
+                config, int(fold_number_str)
+            )
+
+            def is_generated_tile(subdir, index_array):
+                for generated_subdir, generated_index in generated_tiles:
+                    if (
+                        generated_subdir == subdir
+                        and (index_array == generated_index).all()
+                    ):
+                        return True
+                return False
+
+            preferred_tiles = [
+                tile_index
+                for tile_index in preferred_tiles
+                if is_generated_tile(tile_index[0], np.array(tile_index[1:]))
+            ]
+
+        for index_vals in preferred_tiles:
+            chosen_subdir_num = index_vals[0]
+            chosen_index = np.array(index_vals[1:])
 
             try:
                 (
-                    chosen_subdir_num,
-                    chosen_index,
                     annot_map,
                     completed_map,
                     in_progress_map,
-                ) = get_subdir_and_index(config, subdir_str, index_str)
+                ) = get_subdir_and_index_vals(
+                    config, chosen_subdir_num, chosen_index
+                )
             except RuntimeError as e:
                 logging.info(
                     "Skipping tile of interest %s, reason: %s"
-                    % (preferred_string, e)
+                    % (index_vals, e)
                 )
+                continue
+            break
 
-            if chosen_subdir_num is not None and chosen_index is not None:
-                break
-
-        if subdir_str is None or index_str is None:
+        if chosen_subdir_num is None or chosen_index is None:
             logging.warning(
                 "Read from preferred tiles of interest specified but none found"
+            )
+        else:
+            logging.info(
+                "Using preferred tile, subdir %d index %s"
+                % (chosen_subdir_num, chosen_index)
             )
     else:
         # try and read subdir and index from parameters
@@ -659,7 +736,7 @@ def make_annotation_piece(
             )
         generated_annot = None
 
-    logging.info("Chosen index: %s" % chosen_index)
+    logging.info("Chosen index: %s" % (chosen_index))
 
     # check if output file already exists
     index_name = "_".join([str(x) for x in chosen_index])

@@ -51,6 +51,7 @@ from AssistedVolumeSegmentation.common import (
     get_completed_map,
     get_source_data,
     get_source_tile_data,
+    get_tiles_of_interest,
     indexed_to_flat,
     load_config,
 )
@@ -164,15 +165,15 @@ def get_test_generator(cf, logger):
         # check each preferred tile in turn
         chosen_tiles_list = []
         num_generate = config["generate_number_tiles"]
-        tiles_of_interest = config["tiles_of_interest"] or []
-        for preferred_index in tiles_of_interest:
-            index_vals_str = preferred_index.split(" ")
-            index_vals = [int(x) for x in index_vals_str]
+        for index_vals in get_tiles_of_interest(config):
             subdir_num = index_vals[0]
-            index_number = index_vals[1:]
-            _, completed_map, in_progress_map, _ = subdir_maps[subdir_num]
+            index_number = np.array(index_vals[1:])
+            annot_map, completed_map, in_progress_map, _ = subdir_maps[
+                subdir_num
+            ]
             try:
-                check_index(index_number, completed_map, in_progress_map)
+                check_index(index_number, completed_map, annot_map)
+                check_index(index_number, in_progress_map, annot_map)
             except RuntimeError as e:
                 # piece is already annotated/in-progress, or invalid
                 logger.info(

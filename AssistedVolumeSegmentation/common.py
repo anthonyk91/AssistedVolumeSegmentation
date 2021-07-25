@@ -273,7 +273,7 @@ def write_annot_file(
     if annot_data is None or annot_fields is None:
         # copy default segment file
         script_path = os.path.dirname(os.path.abspath(__file__))
-        default_file = os.path.join(script_path, default_seg_file)
+        default_file = os.path.join(script_path, os.pardir, default_seg_file)
         shutil.copyfile(default_file, annot_write_path)
         logging.info(
             "Copying initial annotation from %s to %s"
@@ -853,7 +853,7 @@ def get_all_subdirs(config):
     return list(range(len(existing_dirs)))
 
 
-def get_random_subdir(config):
+def get_random_subdir(config: Dict[str, Any]):
     """
     Find list of available subdirs and choose one at random
 
@@ -1079,3 +1079,75 @@ def check_index(
             "Invalid specified index: %s, out of range 0,0,0 - %s"
             % (chosen_index, annot_map.shape)
         )
+
+
+def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
+    """
+    Find the tiles of interest from the config file, including converting units and removing duplicates
+    """
+    entries_list = config["tiles_of_interest"]
+    if entries_list is None:
+        return []
+
+    entries_values = [
+        [int(x) for x in entry_str.split(" ")] for entry_str in entries_list
+    ]
+
+    def convert_voxels(voxel_entries):
+        tile_size = np.array(config["annotation_size"])
+        tile_values = []
+        for index_vals in voxel_entries:
+            subdir_num = index_vals[0]
+            voxel_position = np.array(index_vals[1:])
+            if voxel_position.ndim != 1 or voxel_position.shape[0] != 3:
+                raise RuntimeError(
+                    "Invalid tile of interest position %s" % index_vals
+                )
+            tile_value = (voxel_position // tile_size).astype("int")
+            tile_values.append([subdir_num] + tile_value.tolist())
+        return tile_values
+
+    # convert units
+    if config["tiles_of_interest_units"] == "tiles":
+        pass
+    elif config["tiles_of_interest_units"] == "overview":
+        overview_scales = {}
+
+        # convert from overview positions to voxel positions
+        print("Converting overview positions:", entries_values)
+        voxel_entries = []
+        for index_vals in entries_values:
+            subdir_num = index_vals[0]
+
+            # get overview scale from overview file (or cache)
+            if subdir_num in overview_scales:
+                seg_scales = overview_scales[subdir_num]
+            else:
+                coverage_file = get_full_path(
+                    config, subdir_num, "overview_coverage"
+                )
+                _, seg_scales = read_segment_file(coverage_file)
+                overview_scales[subdir_num] = seg_scales
+
+            overview_position = np.array(index_vals[1:])
+            if overview_position.ndim != 1 or overview_position.shape[0] != 3:
+                raise RuntimeError(
+                    "Invalid tile of interest position %s" % index_vals
+                )
+            voxel_position = overview_position * seg_scales
+            voxel_entries.append([subdir_num] + voxel_position.tolist())
+
+        # then convert from voxels to tiles and return
+        print("Voxel positions:", voxel_entries)
+        entries_values = convert_voxels(voxel_entries)
+    elif config["tiles_of_interest_units"] == "voxels":
+        entries_values = convert_voxels(entries_values)
+
+    # remove duplicates
+    print("Tile positions:", entries_values)
+    unique_list = [
+        x
+        for i, x in enumerate(entries_values)
+        if x not in entries_values[i + 1 :]
+    ]
+    return unique_list  # list(set([tuple(x) for x in entries_values]))
