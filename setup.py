@@ -1,5 +1,7 @@
 import io
 import os
+import shutil
+import site
 import subprocess
 import sys
 import zipfile
@@ -23,6 +25,10 @@ mdt_url = (
 )
 patch_install_path = "python-patch-master"
 
+script_path = os.path.dirname(__file__)
+path_file = "AssistedVolumeSegmentation.pth"
+mdt_path_file = "medicaldetectiontoolkit.pth"
+
 
 def get_requirements(filename):
     lineiter = (line.strip() for line in open(filename))
@@ -34,7 +40,6 @@ def install_custom_dependencies():
     print("Installing custom dependencies")
 
     # copy patch script
-    script_path = os.path.dirname(__file__)
     resp = urlopen(patch_url).read()
     remote = io.BytesIO(resp)
     zf = zipfile.ZipFile(remote, "r")
@@ -54,6 +59,9 @@ def install_custom_dependencies():
     # rename so path matches patch
     mdt_extracted_path = os.path.join(mdt_extract_path, mdt_extracted_name)
     mdt_target_path = os.path.join(mdt_extract_path, mdt_target_name)
+    # remove anything in target path, for example from a previous install/attempt
+    if os.path.exists(mdt_target_path):
+        shutil.rmtree(mdt_target_path, ignore_errors=True)
     os.rename(mdt_extracted_path, mdt_target_path)
 
     # apply patch
@@ -67,6 +75,12 @@ def install_custom_dependencies():
     subprocess.check_call(
         [sys.executable, "setup.py", "install"], cwd=mdt_target_path
     )
+
+    # add MDT path to site packages
+    site_path = site.getsitepackages()[0]
+    mdt_path_file_full = os.path.join(site_path, mdt_path_file)
+    with open(mdt_path_file_full, "w") as f:
+        f.write(mdt_target_path + "\n")
 
     print("Done installing custom dependencies")
 
@@ -97,10 +111,17 @@ def main():
                 "get_data_overview = AssistedVolumeSegmentation.get_data_overview:main",
                 "map_source_data = AssistedVolumeSegmentation.map_source_data:main",
                 "set_piece_complete = AssistedVolumeSegmentation.set_piece_complete:main",
+                "check_config = AssistedVolumeSegmentation.check_config:main",
                 # "mdt_exec = exec"
             ],
         },
     )
+
+    # add AssistedVolumeSegmentation path to site packages
+    site_path = site.getsitepackages()[0]
+    path_file_full = os.path.join(site_path, path_file)
+    with open(path_file_full, "w") as f:
+        f.write(script_path + "\n")
 
     try:
         install_custom_dependencies()

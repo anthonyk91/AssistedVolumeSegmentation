@@ -2,9 +2,9 @@ import os
 
 import default_configs
 import numpy as np
-from common import load_config
 from default_configs import DefaultConfigs
 
+from AssistedVolumeSegmentation.common import load_config
 from mdt_experiment.data_loader import CONFIG_ENV_VAR
 
 

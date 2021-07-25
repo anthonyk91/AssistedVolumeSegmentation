@@ -79,6 +79,20 @@ segmentation_method: "semantic"
 # is 2.  This field is not used for instance segmentation.
 semantic_segmentation_classes: 1
 
+# The following parameter is used to specify tiles that are interesting regions and should be
+# chosen for generation or annotation (if the command line option is specified.  As an example
+# if there are regions in the data that have been recognised as having notable features that
+# should be annotated (or generated for verifying), they can be specified here.  The format is
+# subdir_number tile_x tile_y tile_z for each tile, for example:
+# tiles_of_interest:
+#  - 0 35 7 12
+#  - 1 12 1 29
+tiles_of_interest:
+
+# Specify the units used to define the tiles of interest.  These can be tile units ("tile"), position units in the 
+# overview ("overview"), or voxel units ("voxels").  All tiles of interest entries need to use the same units.
+tiles_of_interest_units: "overview"
+
 # the following values generally represent paths where output will be stored, and may not
 # need to be modified.
 

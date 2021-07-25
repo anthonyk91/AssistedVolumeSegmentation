@@ -83,6 +83,7 @@ def get_completed_map(
     config: Dict[str, Any],
     subdir_num: int,
     annot_pieces_dim: Optional[Tuple[int, int, int]] = None,
+    find_in_progress: bool = False,
 ) -> np.ndarray:
     """
     Get map of pieces that have been annotated and recorded as completed (ie the pieces
@@ -91,6 +92,7 @@ def get_completed_map(
     :param Dict[str, Any] config: Configuration dictionary
     :param int subdir_num: Subdirectory number
     :param Optional[Tuple[int, int, int]] annot_pieces_dim: Dimensions of full annotation pieces map
+    :param bool find_in_progress: Find pieces from the in-progress folder instead of completed folder
     :return: Array of annotation pieces, of same size as annotation map, representing which pieces
            have been completed
     """
@@ -101,9 +103,10 @@ def get_completed_map(
         )
         annot_pieces_dim = annot_map.shape
 
-    completed_piece_path = get_full_path(
-        config, subdir_num, "completed_piece_path"
-    )
+    piece_path_name = "completed_piece_path"
+    if find_in_progress:
+        piece_path_name = "inprogress_piece_path"
+    completed_piece_path = get_full_path(config, subdir_num, piece_path_name)
     found_indices = find_path_pieces(completed_piece_path)
 
     # create occupancy grid of found completed annotations
@@ -270,7 +273,7 @@ def write_annot_file(
     if annot_data is None or annot_fields is None:
         # copy default segment file
         script_path = os.path.dirname(os.path.abspath(__file__))
-        default_file = os.path.join(script_path, default_seg_file)
+        default_file = os.path.join(script_path, os.pardir, default_seg_file)
         shutil.copyfile(default_file, annot_write_path)
         logging.info(
             "Copying initial annotation from %s to %s"
@@ -850,7 +853,7 @@ def get_all_subdirs(config):
     return list(range(len(existing_dirs)))
 
 
-def get_random_subdir(config):
+def get_random_subdir(config: Dict[str, Any]):
     """
     Find list of available subdirs and choose one at random
 
@@ -1037,3 +1040,114 @@ def get_layer_segments(layer_data: np.ndarray):
     )  # shape (all_segments, 2)
 
     return segments_with_layer
+
+
+def check_index_str(
+    specified_index: List[str],
+    completed_map: np.ndarray,
+    annot_map: np.ndarray,
+):
+    """
+    Find the index number from the index string, and check if not already completed
+    """
+    chosen_index = np.array([int(x) for x in specified_index])
+    check_index(chosen_index, completed_map, annot_map)
+    return chosen_index
+
+
+def check_index(
+    chosen_index: List[int], completed_map: np.ndarray, annot_map: np.ndarray
+):
+    """
+    Find the index number from the index string, and check if not already completed
+    """
+    if len(chosen_index) != 3:
+        raise RuntimeError("Invalid specified index: %s" % (chosen_index,))
+    if completed_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
+        raise RuntimeError(
+            "Invalid specified index: %s, already completed" % (chosen_index,)
+        )
+    if not annot_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
+        raise RuntimeError(
+            "Invalid specified index: %s, not a valid annotation"
+            % (chosen_index,)
+        )
+    if (chosen_index >= np.array(annot_map.shape)).any() or (
+        chosen_index < 0
+    ).any():
+        raise RuntimeError(
+            "Invalid specified index: %s, out of range 0,0,0 - %s"
+            % (chosen_index, annot_map.shape)
+        )
+
+
+def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
+    """
+    Find the tiles of interest from the config file, including converting units and removing duplicates
+    """
+    entries_list = config["tiles_of_interest"]
+    if entries_list is None:
+        return []
+
+    entries_values = [
+        [int(x) for x in entry_str.split(" ")] for entry_str in entries_list
+    ]
+
+    def convert_voxels(voxel_entries):
+        tile_size = np.array(config["annotation_size"])
+        tile_values = []
+        for index_vals in voxel_entries:
+            subdir_num = index_vals[0]
+            voxel_position = np.array(index_vals[1:])
+            if voxel_position.ndim != 1 or voxel_position.shape[0] != 3:
+                raise RuntimeError(
+                    "Invalid tile of interest position %s" % index_vals
+                )
+            tile_value = (voxel_position // tile_size).astype("int")
+            tile_values.append([subdir_num] + tile_value.tolist())
+        return tile_values
+
+    # convert units
+    if config["tiles_of_interest_units"] == "tiles":
+        pass
+    elif config["tiles_of_interest_units"] == "overview":
+        overview_scales = {}
+
+        # convert from overview positions to voxel positions
+        print("Converting overview positions:", entries_values)
+        voxel_entries = []
+        for index_vals in entries_values:
+            subdir_num = index_vals[0]
+
+            # get overview scale from overview file (or cache)
+            if subdir_num in overview_scales:
+                seg_scales = overview_scales[subdir_num]
+            else:
+                coverage_file = get_full_path(
+                    config, subdir_num, "overview_coverage"
+                )
+                _, seg_scales = read_segment_file(coverage_file)
+                overview_scales[subdir_num] = seg_scales
+
+            overview_position = np.array(index_vals[1:])
+            if overview_position.ndim != 1 or overview_position.shape[0] != 3:
+                raise RuntimeError(
+                    "Invalid tile of interest position %s" % index_vals
+                )
+            voxel_position = overview_position * seg_scales
+            voxel_entries.append([subdir_num] + voxel_position.tolist())
+
+        # then convert from voxels to tiles and return
+        print("Voxel positions:", voxel_entries)
+        entries_values = convert_voxels(voxel_entries)
+    elif config["tiles_of_interest_units"] == "voxels":
+        entries_values = convert_voxels(entries_values)
+
+    # remove duplicates
+    print("Tile positions:", entries_values)
+    unique_list = [
+        x
+        for i, x in enumerate(entries_values)
+        if x not in entries_values[i + 1 :]
+    ]
+    return unique_list  # list(set([tuple(x) for x in entries_values]))
