@@ -254,6 +254,12 @@ def get_generated_piece(
         subdir_and_index = flat_to_indexed(flat_index, config)
         found_indices.append(subdir_and_index)
 
+    if len(found_indices) == 0:
+        raise RuntimeError(
+            "Could not find any generated tiles from path %s"
+            % generator_files_path
+        )
+
     # if chosen index is not specified, select from available generated annotations
     if chosen_subdir_num is None and chosen_index is None:
         chosen_subdir_num, chosen_index = random.choice(found_indices)
@@ -549,7 +555,8 @@ def make_annotation_piece(
     if read_preferred:
         # select the first index value available from the preferred list that is not already annotated
         # or in progress
-        for preferred_string in config["tiles_of_interest"]:
+        tiles_of_interest = config["tiles_of_interest"] or []
+        for preferred_index in tiles_of_interest:
             values_str = preferred_string.split(" ")
             subdir_str = values_str[0]
             index_str = values_str[1:]

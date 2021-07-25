@@ -27,6 +27,7 @@ patch_install_path = "python-patch-master"
 
 script_path = os.path.dirname(__file__)
 path_file = "AssistedVolumeSegmentation.pth"
+mdt_path_file = "medicaldetectiontoolkit.pth"
 
 
 def get_requirements(filename):
@@ -74,6 +75,12 @@ def install_custom_dependencies():
     subprocess.check_call(
         [sys.executable, "setup.py", "install"], cwd=mdt_target_path
     )
+
+    # add MDT path to site packages
+    site_path = site.getsitepackages()[0]
+    mdt_path_file_full = os.path.join(site_path, mdt_path_file)
+    with open(mdt_path_file_full, "w") as f:
+        f.write(mdt_target_path + "\n")
 
     print("Done installing custom dependencies")
 

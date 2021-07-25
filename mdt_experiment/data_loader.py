@@ -43,7 +43,8 @@ from batchgenerators.transforms.spatial_transforms import SpatialTransform
 from batchgenerators.transforms.utility_transforms import (
     ConvertSegToBoundingBoxCoordinates,
 )
-from common import (
+
+from AssistedVolumeSegmentation.common import (
     check_index,
     flat_to_indexed,
     get_annot_map,
@@ -53,7 +54,10 @@ from common import (
     indexed_to_flat,
     load_config,
 )
-from get_annotated_section import find_all_subdir_sections, get_section
+from AssistedVolumeSegmentation.get_annotated_section import (
+    find_all_subdir_sections,
+    get_section,
+)
 
 CONFIG_ENV_VAR = "ANNOTATION_CONFIG"
 GENERATE_SUBDIR = "GENERATE_SUBDIR_NUMBER"
@@ -160,7 +164,8 @@ def get_test_generator(cf, logger):
         # check each preferred tile in turn
         chosen_tiles_list = []
         num_generate = config["generate_number_tiles"]
-        for preferred_index in config["tiles_of_interest"]:
+        tiles_of_interest = config["tiles_of_interest"] or []
+        for preferred_index in tiles_of_interest:
             index_vals_str = preferred_index.split(" ")
             index_vals = [int(x) for x in index_vals_str]
             subdir_num = index_vals[0]
