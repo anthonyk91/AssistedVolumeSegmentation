@@ -1093,17 +1093,17 @@ def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
         [int(x) for x in entry_str.split(" ")] for entry_str in entries_list
     ]
 
-    def convert_voxels(voxel_entries):
+    def convert_source_to_tile(source_entries):
         tile_size = np.array(config["annotation_size"])
         tile_values = []
-        for index_vals in voxel_entries:
+        for index_vals in source_entries:
             subdir_num = index_vals[0]
-            voxel_position = np.array(index_vals[1:])
-            if voxel_position.ndim != 1 or voxel_position.shape[0] != 3:
+            source_position = np.array(index_vals[1:])
+            if source_position.ndim != 1 or source_position.shape[0] != 3:
                 raise RuntimeError(
                     "Invalid tile of interest position %s" % index_vals
                 )
-            tile_value = (voxel_position // tile_size).astype("int")
+            tile_value = (source_position // tile_size).astype("int")
             tile_values.append([subdir_num] + tile_value.tolist())
         return tile_values
 
@@ -1113,9 +1113,9 @@ def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
     elif config["tiles_of_interest_units"] == "overview":
         overview_scales = {}
 
-        # convert from overview positions to voxel positions
+        # convert from overview positions to source positions
         print("Converting overview positions:", entries_values)
-        voxel_entries = []
+        source_entries = []
         for index_vals in entries_values:
             subdir_num = index_vals[0]
 
@@ -1134,14 +1134,14 @@ def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
                 raise RuntimeError(
                     "Invalid tile of interest position %s" % index_vals
                 )
-            voxel_position = overview_position * seg_scales
-            voxel_entries.append([subdir_num] + voxel_position.tolist())
+            source_position = overview_position * seg_scales
+            source_entries.append([subdir_num] + source_position.tolist())
 
-        # then convert from voxels to tiles and return
-        print("Voxel positions:", voxel_entries)
-        entries_values = convert_voxels(voxel_entries)
-    elif config["tiles_of_interest_units"] == "voxels":
-        entries_values = convert_voxels(entries_values)
+        # then convert from source positions to tiles and return
+        print("Source positions:", source_entries)
+        entries_values = convert_source_to_tile(source_entries)
+    elif config["tiles_of_interest_units"] == "source":
+        entries_values = convert_source_to_tile(entries_values)
 
     # remove duplicates
     print("Tile positions:", entries_values)
