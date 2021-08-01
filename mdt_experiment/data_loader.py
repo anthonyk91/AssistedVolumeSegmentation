@@ -32,6 +32,9 @@ from batchgenerators.dataloading.data_loader import SlimDataLoaderBase
 from batchgenerators.dataloading.multi_threaded_augmenter import (
     MultiThreadedAugmenter,
 )
+from batchgenerators.dataloading.single_threaded_augmenter import (
+    SingleThreadedAugmenter,
+)
 from batchgenerators.transforms.abstract_transforms import Compose
 from batchgenerators.transforms.crop_and_pad_transforms import (
     CenterCropTransform,
@@ -307,14 +310,15 @@ def create_data_gen_pipeline(
         )
     )
     all_transforms = Compose(my_transforms)
-    # multithreaded_generator = SingleThreadedAugmenter(data_gen, all_transforms)
-    multithreaded_generator = MultiThreadedAugmenter(
-        data_gen,
-        all_transforms,
-        num_processes=cf.n_workers,
-        seeds=range(cf.n_workers),
-    )
-    return multithreaded_generator
+    if cf.n_workers == 1:
+        return SingleThreadedAugmenter(data_gen, all_transforms)
+    else:
+        return MultiThreadedAugmenter(
+            data_gen,
+            all_transforms,
+            num_processes=cf.n_workers,
+            seeds=range(cf.n_workers),
+        )
 
 
 class BatchExporter:
@@ -515,7 +519,6 @@ class BatchGenerator(SlimDataLoaderBase):
                     self.annotation_config["segmentation_method"] == "semantic"
                     and self.annotation_config["semantic_segmentation_classes"]
                     == 1
-                    and section_num_segments > 1
                 ):
                     # this data contains multiple segments but one semantic segmentation class is needed,
                     # merge into a common class
