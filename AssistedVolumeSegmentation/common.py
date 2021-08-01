@@ -874,7 +874,7 @@ def make_seg_format(input_data):
     """
 
     def make_segments_from_layer(layer_data):
-        num_segments = layer_data.max()
+        num_segments = int(layer_data.max())
         seg_maps = [
             (layer_data == x).astype(input_data.dtype)
             for x in range(1, num_segments + 1)
@@ -952,7 +952,7 @@ def make_layer_format(
     if input_data.ndim == 3:
         # currently in labelmap format, return as layer format with single layer
         layer_data = input_data[None, :, :, :]
-        num_segments = np.max(input_data) + 1
+        num_segments = int(np.max(input_data)) + 1
     elif input_data.ndim == 4:
         # check if in segment format
         if input_data.shape[0] > 1 and np.max(input_data) == 1:
@@ -989,8 +989,8 @@ def make_layer_format(
                 layer_data.shape,
             )
         else:
-            print("keeping current layer format")
-            num_segments = np.max(input_data) + 1
+            # print("keeping current layer format")
+            num_segments = int(np.max(input_data)) + 1
             layer_data = input_data
     else:
         raise RuntimeError(
