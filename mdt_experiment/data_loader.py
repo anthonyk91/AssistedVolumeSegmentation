@@ -382,8 +382,11 @@ class BatchExporter:
                 "dtype",
                 output_dtype,
             )
+            h5_dataset_name = self.annotation_config[
+                "source_hdf5_dataset_name"
+            ]
             h5_dataset = h5file.create_dataset(
-                "generated_data", shape=output_shape, dtype=output_dtype
+                h5_dataset_name, shape=output_shape, dtype=output_dtype
             )
             self.output_datasets.append(h5_dataset)
 
