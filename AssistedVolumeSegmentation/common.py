@@ -251,11 +251,12 @@ def get_annotation(
 
 
 def write_annot_file(
-    index_name: str,
-    write_path: str,
-    annot_data: np.ndarray,
-    annot_fields: Dict[str, Any],
+    index_name: Optional[str],
+    write_path: Optional[str],
+    annot_data: Optional[np.ndarray],
+    annot_fields: Optional[Dict[str, Any]],
     scales: np.ndarray,
+    annot_write_path: Optional[str] = None,
 ) -> str:
     """
     Write data to annotation file
@@ -265,11 +266,17 @@ def write_annot_file(
     :param np.ndarray annot_data: Annotation data to write, in segment format with shape (nsegs, x, y, z)
     :param Dict[str, Any] annot_fields: Header information to write to file
     :param np.ndarray scales: Array of scale/direction information written in header
+    :param Optional[str] annot_write_path: Full path to write to (used instead of index_name and write_path)
     :return: Full path of file written to
     """
-    annot_file = index_name + annot_suffix_segments
-    annot_write_path = os.path.join(write_path, annot_file)
-    os.makedirs(write_path, exist_ok=True)
+    if (
+        annot_write_path is None
+        and index_name is not None
+        and write_path is not None
+    ):
+        annot_file = index_name + annot_suffix_segments
+        annot_write_path = os.path.join(write_path, annot_file)
+        os.makedirs(write_path, exist_ok=True)
     if annot_data is None or annot_fields is None:
         # copy default segment file
         script_path = os.path.dirname(os.path.abspath(__file__))
@@ -408,6 +415,17 @@ def load_config(config_file: str) -> Dict[str, Any]:
     config = yaml.safe_load(open(config_file, "r"))
 
     return config
+
+
+def get_overview_scale(config: Dict[str, Any], subdir_num: int):
+    """
+    Find the overview scale by reading from the overview data file
+    """
+    overview_volume_path = get_full_path(
+        config, subdir_num, "overview_reduced_data"
+    )
+    overview_data = nib.load(overview_volume_path)
+    return np.diag(overview_data.affine)[:3]
 
 
 def read_segment_file(
@@ -874,7 +892,7 @@ def make_seg_format(input_data):
     """
 
     def make_segments_from_layer(layer_data):
-        num_segments = layer_data.max()
+        num_segments = int(layer_data.max())
         seg_maps = [
             (layer_data == x).astype(input_data.dtype)
             for x in range(1, num_segments + 1)
@@ -952,7 +970,7 @@ def make_layer_format(
     if input_data.ndim == 3:
         # currently in labelmap format, return as layer format with single layer
         layer_data = input_data[None, :, :, :]
-        num_segments = np.max(input_data) + 1
+        num_segments = int(np.max(input_data)) + 1
     elif input_data.ndim == 4:
         # check if in segment format
         if input_data.shape[0] > 1 and np.max(input_data) == 1:
@@ -989,8 +1007,8 @@ def make_layer_format(
                 layer_data.shape,
             )
         else:
-            print("keeping current layer format")
-            num_segments = np.max(input_data) + 1
+            # print("keeping current layer format")
+            num_segments = int(np.max(input_data)) + 1
             layer_data = input_data
     else:
         raise RuntimeError(
@@ -1063,6 +1081,15 @@ def check_index(
     """
     if len(chosen_index) != 3:
         raise RuntimeError("Invalid specified index: %s" % (chosen_index,))
+    if (
+        chosen_index[0] >= annot_map.shape[0]
+        or chosen_index[1] >= annot_map.shape[1]
+        or chosen_index[2] >= annot_map.shape[2]
+    ):
+        raise RuntimeError(
+            "Invalid specified index: %s, out of bounds of map with shape %s"
+            % (chosen_index, annot_map.shape)
+        )
     if completed_map[chosen_index[0], chosen_index[1], chosen_index[2]]:
         raise RuntimeError(
             "Invalid specified index: %s, already completed" % (chosen_index,)
@@ -1126,7 +1153,7 @@ def get_tiles_of_interest(config: Dict[str, Any]) -> List[List[int]]:
                 coverage_file = get_full_path(
                     config, subdir_num, "overview_coverage"
                 )
-                _, seg_scales = read_segment_file(coverage_file)
+                seg_scales = get_overview_scale(config, subdir_num)
                 overview_scales[subdir_num] = seg_scales
 
             overview_position = np.array(index_vals[1:])
