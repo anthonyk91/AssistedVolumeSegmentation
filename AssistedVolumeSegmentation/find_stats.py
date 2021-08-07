@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+from typing import Any, Dict, Optional
 
 import numpy as np
 import tqdm
@@ -17,38 +18,44 @@ from AssistedVolumeSegmentation.common import (
 
 
 def find_data_stats(
-    config,
-    subdir_str,
+    config: Dict[str, Any],
+    subdir_str: Optional[str],
 ):
-    subdir_num = int(subdir_str)
+    if subdir_str is None:
+        subdirs = range(len(config["subdir_paths"]))
+    else:
+        subdir_num = int(subdir_str)
+        subdirs = [subdir_num]
 
-    annotation_scale = np.array(config["annotation_size"])
-    annot_map, _, _ = get_annot_map(config, subdir_num)
-
-    annot_map_mask = annot_map.astype("bool")
-    annot_map_indices = np.stack(
-        np.where(annot_map_mask == completed_value), axis=1
-    )  # (n,3)
-
-    # choose a number of pieces at random
-    test_pieces = 10
-    crop_size = annotation_scale
     means = []
     vars = []
     mins = []
     maxs = []
-    for _ in tqdm.tqdm(range(test_pieces)):
-        chosen_indices = annot_map_indices[
-            np.random.choice(len(annot_map_indices))
-        ]
-        data_crop_origin = chosen_indices * annotation_scale
-        source_data = get_source_data(
-            config, subdir_num, data_crop_origin, crop_size
-        )
-        means.append(source_data.mean())
-        vars.append(source_data.var())
-        mins.append(source_data.min())
-        maxs.append(source_data.max())
+    annotation_scale = np.array(config["annotation_size"])
+    sampled_pieces = 0
+    for subdir_num in subdirs:
+        annot_map, _, _ = get_annot_map(config, subdir_num)
+        annot_map_mask = annot_map.astype("bool")
+        annot_map_indices = np.stack(
+            np.where(annot_map_mask == completed_value), axis=1
+        )  # (n,3)
+
+        # choose a number of pieces at random
+        test_pieces = 10
+        crop_size = annotation_scale
+        for _ in tqdm.tqdm(range(test_pieces)):
+            chosen_indices = annot_map_indices[
+                np.random.choice(len(annot_map_indices))
+            ]
+            data_crop_origin = chosen_indices * annotation_scale
+            source_data = get_source_data(
+                config, subdir_num, data_crop_origin, crop_size
+            )
+            means.append(source_data.mean())
+            vars.append(source_data.var())
+            mins.append(source_data.min())
+            maxs.append(source_data.max())
+        sampled_pieces += test_pieces
 
     all_mean = np.mean(means)
     all_var = np.mean(vars)
@@ -58,7 +65,7 @@ def find_data_stats(
 
     logging.info(
         "Sampled %d pieces, mean %f std %f min %d max %d"
-        % (test_pieces, all_mean, all_std, all_min, all_max)
+        % (sampled_pieces, all_mean, all_std, all_min, all_max)
     )
 
 
