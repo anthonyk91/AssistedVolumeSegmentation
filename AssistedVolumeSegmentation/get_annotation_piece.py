@@ -609,6 +609,14 @@ def make_annotation_piece(
         # select the first index value available from the preferred list that is not already annotated
         # or in progress
         preferred_tiles = get_tiles_of_interest(config)
+        if subdir_str is not None:
+            # filter preferred tiles according to specified subdir
+            specified_subdir_num = int(subdir_str)
+            preferred_tiles = [
+                tile_index
+                for tile_index in preferred_tiles
+                if tile_index[0] == specified_subdir_num
+            ]
         if read_generated:
             # reduce preferred list to only include generated tiles
             generated_tiles = find_generated_pieces(

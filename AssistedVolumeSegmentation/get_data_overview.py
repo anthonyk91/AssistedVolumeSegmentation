@@ -239,7 +239,9 @@ def reduce_source_data(
         # create sample coverage segmentation file
         if not os.path.exists(write_coverage_path):
             script_path = os.path.dirname(os.path.abspath(__file__))
-            default_file = os.path.join(script_path, default_seg_file)
+            default_file = os.path.join(
+                script_path, os.pardir, default_seg_file
+            )
             shutil.copyfile(default_file, write_coverage_path)
             logging.info(
                 "Copying initial coverage annotation from %s to %s"

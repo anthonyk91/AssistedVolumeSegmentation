@@ -131,7 +131,11 @@ def get_test_generator(cf, logger):
         logger.info("Producing output for full data")
         num_subdirs = len(config["subdir_paths"])
         batch_data = []
-        for subdir_num in range(num_subdirs):
+        if GENERATE_SUBDIR in os.environ:
+            generate_subdirs = [int(os.environ[GENERATE_SUBDIR])]
+        else:
+            generate_subdirs = range(num_subdirs)
+        for subdir_num in generate_subdirs:
             annot_map, _, _ = get_annot_map(config, subdir_num)
             logger.info(
                 "Subdir %d, %d covered tiles" % (subdir_num, annot_map.sum())
@@ -168,8 +172,18 @@ def get_test_generator(cf, logger):
         # check each preferred tile in turn
         chosen_tiles_list = []
         num_generate = config["generate_number_tiles"]
+        specified_subdir_num = None
+        if GENERATE_SUBDIR in os.environ:
+            specified_subdir_num = int(os.environ[GENERATE_SUBDIR])
+
         for index_vals in get_tiles_of_interest(config):
             subdir_num = index_vals[0]
+            if (
+                specified_subdir_num is not None
+                and subdir_num != specified_subdir_num
+            ):
+                # only choose preferred tiles with given subdir number if specified
+                continue
             index_number = np.array(index_vals[1:])
             annot_map, completed_map, in_progress_map, _ = subdir_maps[
                 subdir_num
@@ -192,8 +206,11 @@ def get_test_generator(cf, logger):
 
         # choose a number of random tiles for remaining
         for _ in range(num_generate - len(chosen_tiles_list)):
-            # choose a random subdir
-            subdir_num = np.random.randint(len(config["subdir_paths"]))
+            if specified_subdir_num is None:
+                # choose a random subdir
+                subdir_num = np.random.randint(len(config["subdir_paths"]))
+            else:
+                subdir_num = specified_subdir_num
             (
                 annot_map,
                 completed_map,

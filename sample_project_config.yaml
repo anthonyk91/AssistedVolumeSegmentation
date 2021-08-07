@@ -130,7 +130,7 @@ source_piece_path: sources
 # training options
 # generator_output_path is where generated pieces from the segmentation model will be
 # found.  at the moment this should correspond with the experiment output directory
-generator_output_path: exp_output
+generator_output_path: training_output
 
 # distribution of pieces to use for training and validation
 train_validation_splits: [0.9, 0.1]
