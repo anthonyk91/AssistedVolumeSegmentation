@@ -895,32 +895,39 @@ def main():
     init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "-i",
         "--index",
         help="Specified index values (x,y,z list) for annotation piece",
         required=False,
         nargs="+",
     )
     parser.add_argument(
+        "-g",
         "--read_generated",
         help="Read piece from generated segmentations",
         required=False,
         action="store_true",
     )
     parser.add_argument(
-        "--launch", help="Launch Slicer to edit piece", action="store_true"
+        "-l",
+        "--launch",
+        help="Launch Slicer to edit piece",
+        action="store_true",
     )
     parser.add_argument(
+        "-p",
         "--preferred",
         help="Choose from preferred tile list",
         action="store_true",
     )
     parser.add_argument(
-        "--config_file", help="Project config file", required=True
+        "-c", "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
-        "--subdir", help="Data subdirectory number", required=False
+        "-s", "--subdir", help="Data subdirectory number", required=False
     )
     parser.add_argument(
+        "-f",
         "--fold_number",
         help="Fold number to get generated data from",
         required=False,

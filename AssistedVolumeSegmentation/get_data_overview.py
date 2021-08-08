@@ -215,7 +215,7 @@ def reduce_source_data(
         write_annot_file(
             index_name=None,
             write_path=None,
-            annot_data=output_array,
+            annot_data=discrete_array,
             annot_fields=sample_fields,
             scales=scales,
             annot_write_path=write_data_path,
@@ -270,20 +270,25 @@ def main():
     init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file", help="Project config file", required=True
+        "-c", "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
-        "--subdir", help="Data subdirectory number", required=False
+        "-s", "--subdir", help="Data subdirectory number", required=False
     )
     parser.add_argument(
-        "--launch", help="Launch Slicer to edit piece", action="store_true"
+        "-l",
+        "--launch",
+        help="Launch Slicer to edit piece",
+        action="store_true",
     )
     parser.add_argument(
+        "-g",
         "--generated_data",
         help="Generated annotation to reduce",
         required=False,
     )
     parser.add_argument(
+        "-o",
         "--generated_data_output",
         help="Output file for reducing generated data",
         required=False,

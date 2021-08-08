@@ -73,10 +73,10 @@ def main():
     init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file", help="Project config file", required=True
+        "-c", "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
-        "--subdir", help="Data subdirectory number", required=False
+        "-s", "--subdir", help="Data subdirectory number", required=False
     )
 
     args = parser.parse_args()

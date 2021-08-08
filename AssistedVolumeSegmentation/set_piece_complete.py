@@ -172,16 +172,17 @@ def main():
     init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "-i",
         "--index",
         help="Specified index values (x,y,z list) for annotation piece",
         required=True,
         nargs="+",
     )
     parser.add_argument(
-        "--config_file", help="Project config file", required=True
+        "-c", "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
-        "--subdir", help="Data subdirectory number", required=True
+        "-s", "--subdir", help="Data subdirectory number", required=True
     )
 
     args = parser.parse_args()

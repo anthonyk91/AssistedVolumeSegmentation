@@ -471,13 +471,17 @@ def main():
     init_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--section_offset", help="Origin of section", required=False, nargs="+"
+        "-o",
+        "--section_offset",
+        help="Origin of section",
+        required=False,
+        nargs="+",
     )
     parser.add_argument(
-        "--config_file", help="Project config file", required=True
+        "-c", "--config_file", help="Project config file", required=True
     )
     parser.add_argument(
-        "--subdir", help="Data subdirectory number", required=True
+        "-s", "--subdir", help="Data subdirectory number", required=True
     )
     args = parser.parse_args()
 

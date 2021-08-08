@@ -35,6 +35,10 @@ source_hdf5_dataset_name: "data"
 # of interest). these values are used to normalise the data values before feeding into the neural
 # network training, for example by applying training_data = (source_data - mean) / std.  the
 # parameter normalise_method is used to specify the normalising function (currently just "mean_std").
+# if the stats values are changed (for example after adding extra data to the project), any existing
+# trained models will not work the same with the revised normalising values.  precise values are not
+# important, it is probably only beneficial to alter the values (and train a new model) if they
+# change by a fairly large amount, say 2x or more.
 data_stats: [30557.405897, 3475.292571, 5037, 47042]
 normalise_method: mean_std
 
