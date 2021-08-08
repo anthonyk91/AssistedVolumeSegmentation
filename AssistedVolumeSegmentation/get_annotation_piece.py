@@ -273,29 +273,29 @@ def get_generated_piece(
     # get list of available generated pieces.
     found_indices = find_generated_pieces(config, fold_number)
 
-    # if chosen index is not specified, select from available generated annotations
-    if chosen_subdir_num is None and chosen_index is None:
-        chosen_subdir_num, chosen_index = random.choice(found_indices)
-    elif chosen_subdir_num is not None and chosen_index is not None:
-        # otherwise check specified tile is in the set of generated tiles
-        found = False
-        for check_subdir, check_index in found_indices:
-            if (
-                check_subdir == chosen_subdir_num
-                and (chosen_index == check_index).all()
-            ):
-                found = True
-                break
-        if not found:
-            raise RuntimeError(
-                "Invalid provided subdir %d and index %s, not found in generated pieces: %s"
-                % (chosen_subdir_num, chosen_index, found_indices)
-            )
-    else:
+    # filter found tiles based on specified subdir/index
+    selected_indices = []
+    for check_subdir, check_index in found_indices:
+        if chosen_subdir_num is not None and check_subdir != chosen_subdir_num:
+            continue
+        if (
+            chosen_index is not None
+            and not (chosen_index == check_index).all()
+        ):
+            continue
+        selected_indices.append((check_subdir, check_index))
+
+    if len(selected_indices) == 0:
         raise RuntimeError(
-            "Invalid provided subdir %d and index %s, either both should be defined, or both undefined to choose a random generated piece"
-            % (chosen_subdir_num, chosen_index)
+            "No valid generated tiles with specified subdir %s and index %s, not found in generated pieces: %s"
+            % (
+                chosen_subdir_num or "Any",
+                chosen_index or "Any",
+                found_indices,
+            )
         )
+
+    chosen_subdir_num, chosen_index = random.choice(found_indices)
 
     # read generated segmentation
     generated_filename = "instseg_pid_%d.pickle" % indexed_to_flat(
@@ -702,16 +702,17 @@ def make_annotation_piece(
         ) = get_generated_piece(
             config, chosen_subdir_num, chosen_index, fold_number
         )
-        if chosen_subdir_num is None and chosen_index is None:
+        if chosen_subdir_num is None:
             # update with newly chosen values
             chosen_subdir_num = new_chosen_subdir_num
-            chosen_index = new_chosen_index
             annot_map, annot_header, _ = get_annot_map(
                 config, chosen_subdir_num
             )
             completed_map = get_completed_map(
                 config, chosen_subdir_num, annot_map.shape
             )
+        if chosen_index is None:
+            chosen_index = new_chosen_index
     else:
         # choose a new piece to annotate from all incomplete pieces
         # require subdir_num to be defined
