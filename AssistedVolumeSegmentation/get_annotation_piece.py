@@ -380,41 +380,47 @@ def get_source_piece(
         "crop base origin %s max %s" % (data_origin_base, data_max_base)
     )
 
-    # find any bounding pieces that have been completed and update data bounds
+    # find any bounding pieces that have been completed and update data bounds.
+    # (this is only done if instance annotation is being used)
     included_neighbours = []
-    for dx in range(-1, 2):
-        for dy in range(-1, 2):
-            for dz in range(-1, 2):
-                if dx == 0 and dy == 0:
-                    continue
-                d_array = [dx, dy, dz]
-                adj_index = annot_index + d_array
-                # check if out of index bounds
-                if (adj_index < 0).any() or (
-                    adj_index >= annot_map.shape
-                ).any():
-                    continue
-                # check if neighbour is completed
-                if not completed_map[adj_index[0], adj_index[1], adj_index[2]]:
-                    continue
-                # have a completed neighbour, extend range to include overlap data
-                crop_origin_adj = np.minimum(0, d_array * piece_overlap_arr)
-                crop_max_adj = np.maximum(0, d_array * piece_overlap_arr)
+    if config["segmentation_method"] == "instance":
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                for dz in range(-1, 2):
+                    if dx == 0 and dy == 0:
+                        continue
+                    d_array = [dx, dy, dz]
+                    adj_index = annot_index + d_array
+                    # check if out of index bounds
+                    if (adj_index < 0).any() or (
+                        adj_index >= annot_map.shape
+                    ).any():
+                        continue
+                    # check if neighbour is completed
+                    if not completed_map[
+                        adj_index[0], adj_index[1], adj_index[2]
+                    ]:
+                        continue
+                    # have a completed neighbour, extend range to include overlap data
+                    crop_origin_adj = np.minimum(
+                        0, d_array * piece_overlap_arr
+                    )
+                    crop_max_adj = np.maximum(0, d_array * piece_overlap_arr)
 
-                data_crop_origin = np.minimum(
-                    data_crop_origin, data_origin_base + crop_origin_adj
-                )
-                data_crop_max = np.maximum(
-                    data_crop_max, data_max_base + crop_max_adj
-                )
+                    data_crop_origin = np.minimum(
+                        data_crop_origin, data_origin_base + crop_origin_adj
+                    )
+                    data_crop_max = np.maximum(
+                        data_crop_max, data_max_base + crop_max_adj
+                    )
 
-                # record to include existing annotation from neighbour
-                included_neighbours.append(d_array)
+                    # record to include existing annotation from neighbour
+                    included_neighbours.append(d_array)
 
-    logging.info(
-        "annotated neighbours: %s, crop adj origin %s max %s"
-        % (included_neighbours, data_crop_origin, data_crop_max)
-    )
+        logging.info(
+            "annotated neighbours: %s, crop adj origin %s max %s"
+            % (included_neighbours, data_crop_origin, data_crop_max)
+        )
 
     crop_size = data_crop_max - data_crop_origin
     data_arr = get_source_data(config, subdir_num, data_crop_origin, crop_size)
