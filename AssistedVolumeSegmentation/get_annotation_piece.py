@@ -295,7 +295,11 @@ def get_generated_piece(
             )
         )
 
-    chosen_subdir_num, chosen_index = random.choice(found_indices)
+    chosen_subdir_num, chosen_index = random.choice(selected_indices)
+    print(
+        "Getting data for subdir %d, index %s"
+        % (chosen_subdir_num, chosen_index)
+    )
 
     # read generated segmentation
     generated_filename = "instseg_pid_%d.pickle" % indexed_to_flat(
