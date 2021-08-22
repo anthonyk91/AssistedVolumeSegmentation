@@ -1,6 +1,6 @@
 diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
---- medicaldetectiontoolkit/default_configs.py	2021-06-30 22:16:51.830606096 +0100
-+++ revised/default_configs.py	2021-07-03 23:28:13.314401105 +0100
+--- medicaldetectiontoolkit/default_configs.py	2020-04-30 18:49:01.000000000 +0100
++++ revised/default_configs.py	2021-07-25 00:17:16.492307319 +0100
 @@ -140,4 +140,7 @@
          # for probabilistic detection
          self.n_latent_dims = 0
@@ -9,9 +9,35 @@ diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
 +        # single global segmentation and "instance" for instance segmentation
 +        self.segmentation_method = None
  
+diff -ruN medicaldetectiontoolkit/evaluator.py revised/evaluator.py
+--- medicaldetectiontoolkit/evaluator.py	2020-04-30 18:49:01.000000000 +0100
++++ revised/evaluator.py	2021-08-09 20:01:13.064966404 +0100
+@@ -258,7 +258,14 @@
+         # -------------- monitoring independent of class, score level ------------
+         if monitor_metrics is not None:
+             for l_name in self.epoch_losses:
+-                monitor_metrics[l_name] = [self.epoch_losses[l_name]]
++                if l_name not in monitor_metrics:
++                    # hack: initialise with nan to be consistent with other metrics, and so indices
++                    # correspond with epochs
++                    monitor_metrics[l_name] = [np.nan]
++                    monitor_metrics[l_name+"_neg"] = [np.nan]
++                monitor_metrics[l_name].append(self.epoch_losses[l_name])
++                monitor_metrics[l_name+"_neg"].append(-self.epoch_losses[l_name])
++                #monitor_metrics[l_name] = [self.epoch_losses[l_name]]
+ 
+ 
+         df = self.test_df
+@@ -538,4 +545,4 @@
+     except:
+         pass
+ 
+-    return np.mean(q)
+\ No newline at end of file
++    return np.mean(q)
 diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
---- medicaldetectiontoolkit/exec.py	2021-06-30 22:16:51.831606108 +0100
-+++ revised/exec.py	2021-07-03 23:28:13.315401118 +0100
+--- medicaldetectiontoolkit/exec.py	2020-04-30 18:49:01.000000000 +0100
++++ revised/exec.py	2021-07-25 00:17:16.493307319 +0100
 @@ -114,12 +114,19 @@
              if cf.do_validation:
                  val_results_list = []
@@ -51,8 +77,8 @@ diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
      test_evaluator.score_test_df()
  
 diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
---- medicaldetectiontoolkit/models/mrcnn.py	2021-06-30 22:16:51.832606120 +0100
-+++ revised/models/mrcnn.py	2021-07-03 23:28:13.377401928 +0100
+--- medicaldetectiontoolkit/models/mrcnn.py	2020-04-30 18:49:01.000000000 +0100
++++ revised/models/mrcnn.py	2021-07-25 00:17:16.494307319 +0100
 @@ -874,8 +874,12 @@
                      if cf.dim == 2 else mutils.unmold_mask_3D(masks[i], boxes[i], permuted_image_shape))
              # if masks are returned, take max over binary full masks of all predictions in this image.
@@ -79,8 +105,8 @@ diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
      return results_dict
  
 diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
---- medicaldetectiontoolkit/predictor.py	2021-06-30 22:16:51.832606120 +0100
-+++ revised/predictor.py	2021-07-04 16:32:56.994547613 +0100
+--- medicaldetectiontoolkit/predictor.py	2020-04-30 18:49:01.000000000 +0100
++++ revised/predictor.py	2021-07-25 00:17:16.496307319 +0100
 @@ -126,7 +126,6 @@
  
          return results_dict
@@ -365,8 +391,8 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
  
 diff -ruN medicaldetectiontoolkit/requirements.txt revised/requirements.txt
---- medicaldetectiontoolkit/requirements.txt	2021-06-30 22:16:51.832606120 +0100
-+++ revised/requirements.txt	2021-07-03 23:28:13.315401118 +0100
+--- medicaldetectiontoolkit/requirements.txt	2020-04-30 18:49:01.000000000 +0100
++++ revised/requirements.txt	2021-07-25 00:17:16.496307319 +0100
 @@ -1,12 +1,12 @@
 -batchgenerators==0.20.1
 +batchgenerators~=0.20 # 0.20.1

@@ -649,8 +649,8 @@ def make_annotation_piece(
             ]
 
         for index_vals in preferred_tiles:
-            chosen_subdir_num = index_vals[0]
-            chosen_index = np.array(index_vals[1:])
+            test_subdir_num = index_vals[0]
+            test_index = np.array(index_vals[1:])
 
             try:
                 (
@@ -658,7 +658,7 @@ def make_annotation_piece(
                     completed_map,
                     in_progress_map,
                 ) = get_subdir_and_index_vals(
-                    config, chosen_subdir_num, chosen_index
+                    config, test_subdir_num, test_index
                 )
             except RuntimeError as e:
                 logging.info(
@@ -666,6 +666,9 @@ def make_annotation_piece(
                     % (index_vals, e)
                 )
                 continue
+
+            chosen_subdir_num = test_subdir_num
+            chosen_index = test_index
             break
 
         if chosen_subdir_num is None or chosen_index is None:

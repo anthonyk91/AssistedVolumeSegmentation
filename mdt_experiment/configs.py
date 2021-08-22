@@ -108,7 +108,7 @@ class configs(DefaultConfigs):
         #  Schedule / Selection #
         #########################
 
-        self.num_epochs = 25
+        self.num_epochs = 100
         self.num_train_batches = 200 if self.dim == 2 else 200
         self.batch_size = 20 if self.dim == 2 else 16
 
@@ -117,7 +117,7 @@ class configs(DefaultConfigs):
         self.scheduling_patience = np.ceil(
             16000 / (self.num_train_batches * self.batch_size)
         )
-        self.scheduling_criterion = "cellbody_ap"
+        self.scheduling_criterion = "torch_loss_neg"  # "cellbody_ap"
         self.scheduling_mode = (
             "min" if "loss" in self.scheduling_criterion else "max"
         )
@@ -157,7 +157,7 @@ class configs(DefaultConfigs):
         ]  # list of ious to be evaluated for ap-scoring.
 
         self.model_selection_criteria = [
-            "cellbody_ap",
+            "torch_loss_neg",  # "cellbody_ap",
         ]  # criteria to average over for saving epochs.
         self.min_det_thresh = 0.1  # minimum confidence value to select predictions for evaluation.
 
