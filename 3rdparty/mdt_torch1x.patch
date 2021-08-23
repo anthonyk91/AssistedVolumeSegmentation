@@ -1,6 +1,6 @@
 diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
 --- medicaldetectiontoolkit/default_configs.py	2020-04-30 18:49:01.000000000 +0100
-+++ revised/default_configs.py	2021-07-25 00:17:16.492307319 +0100
++++ revised/default_configs.py	2021-08-22 12:34:23.270177542 +0100
 @@ -140,4 +140,7 @@
          # for probabilistic detection
          self.n_latent_dims = 0
@@ -11,8 +11,8 @@ diff -ruN medicaldetectiontoolkit/default_configs.py revised/default_configs.py
  
 diff -ruN medicaldetectiontoolkit/evaluator.py revised/evaluator.py
 --- medicaldetectiontoolkit/evaluator.py	2020-04-30 18:49:01.000000000 +0100
-+++ revised/evaluator.py	2021-08-09 20:01:13.064966404 +0100
-@@ -258,7 +258,14 @@
++++ revised/evaluator.py	2021-08-22 22:33:21.151825638 +0100
+@@ -258,7 +258,19 @@
          # -------------- monitoring independent of class, score level ------------
          if monitor_metrics is not None:
              for l_name in self.epoch_losses:
@@ -25,10 +25,15 @@ diff -ruN medicaldetectiontoolkit/evaluator.py revised/evaluator.py
 +                monitor_metrics[l_name].append(self.epoch_losses[l_name])
 +                monitor_metrics[l_name+"_neg"].append(-self.epoch_losses[l_name])
 +                #monitor_metrics[l_name] = [self.epoch_losses[l_name]]
++            # add random selection (?)
++            if "random" not in monitor_metrics:
++                monitor_metrics["random"] = []
++            count = len(monitor_metrics["random"])
++            monitor_metrics["random"].append(np.random.random() * 2. * count)
  
  
          df = self.test_df
-@@ -538,4 +545,4 @@
+@@ -538,4 +550,4 @@
      except:
          pass
  
@@ -37,7 +42,7 @@ diff -ruN medicaldetectiontoolkit/evaluator.py revised/evaluator.py
 +    return np.mean(q)
 diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
 --- medicaldetectiontoolkit/exec.py	2020-04-30 18:49:01.000000000 +0100
-+++ revised/exec.py	2021-07-25 00:17:16.493307319 +0100
++++ revised/exec.py	2021-08-22 12:34:23.271177542 +0100
 @@ -114,12 +114,19 @@
              if cf.do_validation:
                  val_results_list = []
@@ -78,7 +83,7 @@ diff -ruN medicaldetectiontoolkit/exec.py revised/exec.py
  
 diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
 --- medicaldetectiontoolkit/models/mrcnn.py	2020-04-30 18:49:01.000000000 +0100
-+++ revised/models/mrcnn.py	2021-07-25 00:17:16.494307319 +0100
++++ revised/models/mrcnn.py	2021-08-22 12:34:23.271177542 +0100
 @@ -874,8 +874,12 @@
                      if cf.dim == 2 else mutils.unmold_mask_3D(masks[i], boxes[i], permuted_image_shape))
              # if masks are returned, take max over binary full masks of all predictions in this image.
@@ -106,7 +111,7 @@ diff -ruN medicaldetectiontoolkit/models/mrcnn.py revised/models/mrcnn.py
  
 diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
 --- medicaldetectiontoolkit/predictor.py	2020-04-30 18:49:01.000000000 +0100
-+++ revised/predictor.py	2021-07-25 00:17:16.496307319 +0100
++++ revised/predictor.py	2021-08-22 12:34:23.271177542 +0100
 @@ -126,7 +126,6 @@
  
          return results_dict
@@ -392,7 +397,7 @@ diff -ruN medicaldetectiontoolkit/predictor.py revised/predictor.py
  
 diff -ruN medicaldetectiontoolkit/requirements.txt revised/requirements.txt
 --- medicaldetectiontoolkit/requirements.txt	2020-04-30 18:49:01.000000000 +0100
-+++ revised/requirements.txt	2021-07-25 00:17:16.496307319 +0100
++++ revised/requirements.txt	2021-08-22 12:34:23.271177542 +0100
 @@ -1,12 +1,12 @@
 -batchgenerators==0.20.1
 +batchgenerators~=0.20 # 0.20.1

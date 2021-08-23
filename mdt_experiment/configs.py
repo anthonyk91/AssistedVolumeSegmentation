@@ -157,7 +157,7 @@ class configs(DefaultConfigs):
         ]  # list of ious to be evaluated for ap-scoring.
 
         self.model_selection_criteria = [
-            "torch_loss_neg",  # "cellbody_ap",
+            "random"  # "torch_loss_neg",  # "cellbody_ap",
         ]  # criteria to average over for saving epochs.
         self.min_det_thresh = 0.1  # minimum confidence value to select predictions for evaluation.
 

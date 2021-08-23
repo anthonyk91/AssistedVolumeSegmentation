@@ -415,7 +415,7 @@ def get_section(
                         and config["normalise_method"] == "mean_std"
                     ):
                         data_mean, _ = config["data_stats"][:2]
-                        section_data = data_mean
+                        section_data[:] = data_mean
 
                 # crop corresponding section from annotation.  the annotation array is expected to
                 # cover the full tile, however check the tile offset anyway in case it was opened and
