@@ -104,7 +104,7 @@ def reduce_source_data(
     else:
         # open as hdf5 file
         h5_file = h5py.File(data_path, "r")
-        h5_data_key = "generated_data"  # config["source_hdf5_dataset_name"]
+        h5_data_key = config["source_hdf5_dataset_name"]
         h5_data = h5_file[h5_data_key]
 
         # with H5 data, iterate over the first dimension (x), which is different to when reading from image stacks.
