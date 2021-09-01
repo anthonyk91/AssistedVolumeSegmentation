@@ -350,7 +350,8 @@ class BatchExporter:
         self.tile_size = np.array(
             self.annotation_config["annotation_size"]
         )  # shape (3,)
-        self.output_datasets = []
+        self.output_datasets = {}
+        self.extent_origins = {}
         self.init_output()
 
     def init_output(self):
@@ -364,13 +365,51 @@ class BatchExporter:
         if self.annotation_config["full_generate_format"] == "real_valued":
             assert self.annotation_config["segmentation_method"] == "semantic"
 
+        if GENERATE_SUBDIR in os.environ:
+            generate_subdirs = [int(os.environ[GENERATE_SUBDIR])]
+        else:
+            num_subdirs = len(self.annotation_config["subdir_paths"])
+            generate_subdirs = range(num_subdirs)
+
         # produce output for each subdir
-        for subdir_num in range(len(self.annotation_config["subdir_paths"])):
+        for subdir_num in generate_subdirs:
             # get dimensions of region
             annot_map, _, _ = get_annot_map(
                 self.annotation_config, subdir_num
             )  # shape (tiles_x, tiles_y, tiles_z)
-            annotation_extent = np.array(annot_map.shape) * self.tile_size
+
+            if self.annotation_config["trim_generated_extent"]:
+                # define output extent based on populated tiles
+                populated_tiles = np.stack(
+                    np.where(annot_map)
+                )  # shape (3, num_tiles)
+                extent_origin = np.min(populated_tiles, axis=1)
+                extent_size = (
+                    np.max(populated_tiles, axis=1) - extent_origin + 1
+                )
+                self.extent_origins[subdir_num] = extent_origin
+                annotation_extent = extent_size * self.tile_size
+                cover_percentage = np.prod(extent_size) / np.prod(
+                    annot_map.shape
+                )
+                print(
+                    "ext orig",
+                    extent_origin,
+                    "max",
+                    np.max(populated_tiles, axis=1),
+                    "size",
+                    extent_size,
+                )
+                print(
+                    "Producing output over extent %s (%.2f%% of full)"
+                    % (annotation_extent, cover_percentage)
+                )
+            else:
+                annotation_extent = np.array(annot_map.shape) * self.tile_size
+                print(
+                    "Producing output over full extent %s"
+                    % (annotation_extent,)
+                )
 
             output_full_path = os.path.join(
                 self.annotation_config["project_folder"],
@@ -405,7 +444,7 @@ class BatchExporter:
             h5_dataset = h5file.create_dataset(
                 h5_dataset_name, shape=output_shape, dtype=output_dtype
             )
-            self.output_datasets.append(h5_dataset)
+            self.output_datasets[subdir_num] = h5_dataset
 
     def export_segmentation(
         self, identifier: int, segmentation_data: np.ndarray
@@ -422,8 +461,13 @@ class BatchExporter:
 
         # record tile in HDF5 file
         subdir_dataset = self.output_datasets[subdir_num]
-        origin = index * self.tile_size
-        max = origin + self.tile_size
+
+        # find region to store within generated data extent
+        if self.annotation_config["trim_generated_extent"]:
+            origin = index * self.tile_size - self.extent_origins[subdir_num]
+        else:
+            origin = index * self.tile_size
+        max_pos = origin + self.tile_size
 
         if segmentation_data.ndim == 4:
             # add extra dim for consistency with format with ndim=5
@@ -440,7 +484,10 @@ class BatchExporter:
                     % (segmentation_data.shape, subdir_dataset.shape)
                 )
             subdir_dataset[
-                :, origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
+                :,
+                origin[0] : max_pos[0],
+                origin[1] : max_pos[1],
+                origin[2] : max_pos[2],
             ] = segmentation_data[:, 0, :, :, :]
         elif self.annotation_config["full_generate_format"] == "flattened":
             # find integer values for segmentation output using threshold and flatten down
@@ -453,7 +500,9 @@ class BatchExporter:
                 seg_nums[:, None, None, None] * threshold_array[:, 0, :, :, :]
             ).max(axis=0)
             subdir_dataset[
-                origin[0] : max[0], origin[1] : max[1], origin[2] : max[2]
+                origin[0] : max_pos[0],
+                origin[1] : max_pos[1],
+                origin[2] : max_pos[2],
             ] = flat_array
 
 

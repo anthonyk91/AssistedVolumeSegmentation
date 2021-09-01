@@ -173,3 +173,7 @@ full_generated_data_file: generated_data.h5
 #                classes or instance segmentations.  the threshold used for setting foreground values
 #                is set in generated_threshold.
 full_generate_format: "real_valued"
+
+# if true, produce generated output only using defined region.  if false use region equal to input space
+trim_generated_extent: true
+
